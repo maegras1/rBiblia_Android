@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,9 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -52,18 +55,20 @@ fun TranslationSelectorDialog(
     onToggleFavorite: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var selectedLangFilter by remember { mutableStateOf(currentLanguage) }
     var searchQuery by remember { mutableStateOf("") }
     var showOnlyFavorites by remember { mutableStateOf(false) }
 
-    val filtered = remember(translations, searchQuery, showOnlyFavorites) {
+    val filtered = remember(translations, searchQuery, showOnlyFavorites, selectedLangFilter) {
         val query = searchQuery.trim().lowercase()
         translations.filter { t ->
+            val matchesLang = selectedLangFilter.isEmpty() || t.language.equals(selectedLangFilter, ignoreCase = true)
             val matchesFav = !showOnlyFavorites || t.isFavorite
             val matchesQuery = query.isEmpty() ||
                 t.name.lowercase().contains(query) ||
                 t.id.lowercase().contains(query) ||
                 t.description.lowercase().contains(query)
-            matchesFav && matchesQuery
+            matchesLang && matchesFav && matchesQuery
         }
     }
 
@@ -117,23 +122,48 @@ fun TranslationSelectorDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Filters
+                // Language & Favorite Filter Chips
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Polski
                     FilterChip(
-                        selected = !showOnlyFavorites,
-                        onClick = { showOnlyFavorites = false },
-                        label = { Text(Strings.get("all_translations", currentLanguage)) }
+                        selected = selectedLangFilter == "pl",
+                        onClick = { selectedLangFilter = if (selectedLangFilter == "pl") "" else "pl" },
+                        label = { Text(Strings.get("lang_pl", currentLanguage)) }
                     )
+                    // English
+                    FilterChip(
+                        selected = selectedLangFilter == "en",
+                        onClick = { selectedLangFilter = if (selectedLangFilter == "en") "" else "en" },
+                        label = { Text(Strings.get("lang_en", currentLanguage)) }
+                    )
+                    // Deutsch
+                    FilterChip(
+                        selected = selectedLangFilter == "de",
+                        onClick = { selectedLangFilter = if (selectedLangFilter == "de") "" else "de" },
+                        label = { Text(Strings.get("lang_de", currentLanguage)) }
+                    )
+                    // Wszystkie języki
+                    FilterChip(
+                        selected = selectedLangFilter.isEmpty(),
+                        onClick = { selectedLangFilter = "" },
+                        label = { Text(Strings.get("lang_all", currentLanguage)) }
+                    )
+                    // Ulubione
                     FilterChip(
                         selected = showOnlyFavorites,
-                        onClick = { showOnlyFavorites = true },
+                        onClick = { showOnlyFavorites = !showOnlyFavorites },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.Star,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = if (showOnlyFavorites) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(16.dp)
                             )
                         },
                         label = { Text(Strings.get("favorites", currentLanguage)) }

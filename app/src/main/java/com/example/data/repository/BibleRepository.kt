@@ -18,7 +18,15 @@ class BibleRepository(
 ) {
     suspend fun getTranslations(language: String): List<Translation> {
         val favorites = dbHelper.getFavorites()
-        val list = apiService.getTranslations(language)
+        var list = apiService.getTranslations(language)
+        if (list.isNotEmpty()) {
+            dbHelper.saveCachedTranslations(list)
+        } else {
+            val cached = dbHelper.getCachedTranslations(language)
+            if (cached.isNotEmpty()) {
+                list = cached
+            }
+        }
         return list.map { it.copy(isFavorite = favorites.contains(it.id)) }
     }
 
@@ -36,11 +44,26 @@ class BibleRepository(
         bookId: String,
         chapterId: Int
     ): List<Verse> {
-        val map = apiService.getVerses(language, translationId, bookId, chapterId)
+        // 1. Check local SQLite cache first for instant rendering
+        val cached = dbHelper.getCachedVerses(translationId, bookId, chapterId)
+        val finalMap: Map<Int, String> = if (cached.isNotEmpty()) {
+            cached
+        } else {
+            // 2. Fetch from API
+            val remote = apiService.getVerses(language, translationId, bookId, chapterId)
+            if (remote.isNotEmpty()) {
+                dbHelper.saveCachedVerses(translationId, bookId, chapterId, remote)
+                remote
+            } else {
+                // If API returned empty, try fallback from local database
+                dbHelper.getCachedVerses(translationId, bookId, chapterId)
+            }
+        }
+
         val notes = dbHelper.getNotesForChapter(bookId, chapterId, translationId)
         val notesVerseIds = notes.map { it.verseId }.toSet()
 
-        return map.entries
+        return finalMap.entries
             .sortedBy { it.key }
             .map { (num, text) ->
                 Verse(
@@ -60,8 +83,12 @@ class BibleRepository(
     ): Map<String, String> {
         val result = mutableMapOf<String, String>()
         for (tid in translationIds) {
-            val verses = apiService.getVerses(language, tid, bookId, chapterId)
-            verses[verseId]?.let { result[tid] = it }
+            val verses = getVerses(language, tid, bookId, chapterId)
+            val verse = verses.find { it.number == verseId }
+            if (verse != null && verse.text.isNotBlank()) {
+                result[tid] = verse.text
+            }
+            kotlinx.coroutines.delay(60)
         }
         return result
     }

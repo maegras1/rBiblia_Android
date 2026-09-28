@@ -12,20 +12,36 @@ class PreferencesManager(context: Context) {
         context.getSharedPreferences("rbiblia_prefs", Context.MODE_PRIVATE)
 
     var appLanguage: String
-        get() = prefs.getString("app_language", "en") ?: "en"
+        get() = prefs.getString("app_language", "pl") ?: "pl"
         set(value) = prefs.edit().putString("app_language", value).apply()
 
     var selectedTranslation: String
-        get() = prefs.getString("selected_translation", "en_kjv") ?: "en_kjv"
+        get() = prefs.getString("selected_translation", "pl_ubg") ?: "pl_ubg"
         set(value) = prefs.edit().putString("selected_translation", value).apply()
 
     var selectedBook: String
-        get() = prefs.getString("selected_book", "joh") ?: "joh"
+        get() = prefs.getString("selected_book", "gen") ?: "gen"
         set(value) = prefs.edit().putString("selected_book", value).apply()
 
     var selectedChapter: Int
         get() = prefs.getInt("selected_chapter", 1)
         set(value) = prefs.edit().putInt("selected_chapter", value).apply()
+
+    var isParallelReading: Boolean
+        get() = prefs.getBoolean("is_parallel_reading", false)
+        set(value) = prefs.edit().putBoolean("is_parallel_reading", value).apply()
+
+    var parallelTranslation: String
+        get() = prefs.getString("parallel_translation", "pl_bt5") ?: "pl_bt5"
+        set(value) = prefs.edit().putString("parallel_translation", value).apply()
+
+    var parallelLayoutColumns: Boolean
+        get() = prefs.getBoolean("parallel_layout_columns", true)
+        set(value) = prefs.edit().putBoolean("parallel_layout_columns", value).apply()
+
+    var parallelShowDifferences: Boolean
+        get() = prefs.getBoolean("parallel_show_differences", false)
+        set(value) = prefs.edit().putBoolean("parallel_show_differences", value).apply()
 
     var textSize: TextSize
         get() {

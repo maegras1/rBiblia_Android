@@ -23,13 +23,19 @@ import kotlinx.coroutines.launch
 
 data class BibleUiState(
     val appLanguage: String = "pl",
-    val selectedBook: BookInfo = BookCatalog.getBook("joh", "pl"),
+    val selectedBook: BookInfo = BookCatalog.getBook("gen", "pl"),
     val selectedChapter: Int = 1,
-    val availableChapters: List<Int> = (1..21).toList(),
+    val availableChapters: List<Int> = (1..50).toList(),
     val selectedTranslation: Translation? = null,
     val translations: List<Translation> = emptyList(),
     val verses: List<Verse> = emptyList(),
     val isLoading: Boolean = false,
+    val isParallelReading: Boolean = false,
+    val parallelTranslation: Translation? = null,
+    val parallelVerses: List<Verse> = emptyList(),
+    val isParallelLoading: Boolean = false,
+    val parallelLayoutColumns: Boolean = true,
+    val parallelShowDifferences: Boolean = false,
     val textSize: TextSize = TextSize.MEDIUM,
     val fontFamily: TextFontFamily = TextFontFamily.SERIF,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -71,7 +77,10 @@ class BibleViewModel(
             zenMode = repository.preferences.zenMode,
             continuousText = repository.preferences.continuousText,
             hideVerseNumbers = repository.preferences.hideVerseNumbers,
-            selectedChapter = repository.preferences.selectedChapter
+            selectedChapter = repository.preferences.selectedChapter,
+            isParallelReading = repository.preferences.isParallelReading,
+            parallelLayoutColumns = repository.preferences.parallelLayoutColumns,
+            parallelShowDifferences = repository.preferences.parallelShowDifferences
         )
     )
     val uiState: StateFlow<BibleUiState> = _uiState.asStateFlow()
@@ -83,10 +92,88 @@ class BibleViewModel(
         _uiState.update {
             it.copy(
                 selectedBook = initialBook,
-                availableChapters = (1..initialBook.chapterCount).toList()
+                availableChapters = (1..initialBook.chapterCount).toList(),
+                isParallelReading = repository.preferences.isParallelReading,
+                parallelLayoutColumns = repository.preferences.parallelLayoutColumns,
+                parallelShowDifferences = repository.preferences.parallelShowDifferences
             )
         }
         loadInitialData()
+    }
+
+    private suspend fun resolveBookForTranslation(
+        translationId: String,
+        preferredBookId: String = "",
+        forceDefault: Boolean = false
+    ): Pair<String, Int> {
+        val lang = _uiState.value.appLanguage
+        val structure = repository.getTranslationStructure(lang, translationId)
+        val otBookIds = BookCatalog.getOldTestamentBookIds()
+        val ntBookIds = BookCatalog.getNewTestamentBookIds()
+
+        // Helper to determine default book when not forcing a specific valid book
+        fun getDefaultBook(): Pair<String, Int> {
+            if (structure.isEmpty()) {
+                val isNtOnly = translationId.contains("nt", ignoreCase = true)
+                return if (isNtOnly) Pair("mat", 1) else Pair("gen", 1)
+            }
+
+            val hasOldTestament = structure.keys.any { it in otBookIds }
+            val hasNewTestament = structure.keys.any { it in ntBookIds }
+
+            return when {
+                // Rule 1: Genesis (gen) 1 if translation contains Old Testament (from beginning of Bible)
+                hasOldTestament && structure.containsKey("gen") -> {
+                    val ch = structure["gen"]?.firstOrNull() ?: 1
+                    Pair("gen", ch)
+                }
+                hasOldTestament -> {
+                    val firstOt = structure.keys.firstOrNull { it in otBookIds } ?: "gen"
+                    val ch = structure[firstOt]?.firstOrNull() ?: 1
+                    Pair(firstOt, ch)
+                }
+                // Rule 2: If translation does NOT contain Old Testament -> beginning of New Testament (Matthew 1)
+                hasNewTestament && structure.containsKey("mat") -> {
+                    val ch = structure["mat"]?.firstOrNull() ?: 1
+                    Pair("mat", ch)
+                }
+                hasNewTestament -> {
+                    val firstNt = structure.keys.firstOrNull { it in ntBookIds } ?: "mat"
+                    val ch = structure[firstNt]?.firstOrNull() ?: 1
+                    Pair(firstNt, ch)
+                }
+                // Rule 3: In other cases -> first available page (book & chapter) from the translation
+                else -> {
+                    val firstBook = structure.keys.firstOrNull() ?: "gen"
+                    val ch = structure[firstBook]?.firstOrNull() ?: 1
+                    Pair(firstBook, ch)
+                }
+            }
+        }
+
+        if (forceDefault || preferredBookId.isBlank()) {
+            return getDefaultBook()
+        }
+
+        // If preferredBookId is valid and exists in this translation, keep it
+        if (structure.isNotEmpty()) {
+            if (structure.containsKey(preferredBookId)) {
+                val validChapters = structure[preferredBookId] ?: listOf(1)
+                val currentCh = _uiState.value.selectedChapter
+                val ch = if (validChapters.contains(currentCh)) currentCh else (validChapters.firstOrNull() ?: 1)
+                return Pair(preferredBookId, ch)
+            } else {
+                // Requested book not found in this translation -> apply default book rule
+                return getDefaultBook()
+            }
+        } else {
+            val isNtOnly = translationId.contains("nt", ignoreCase = true)
+            val isOtBook = BookCatalog.getBook(preferredBookId, lang).group == com.example.data.model.BookGroup.OT
+            if (isNtOnly && isOtBook) {
+                return Pair("mat", 1)
+            }
+            return Pair(preferredBookId, 1)
+        }
     }
 
     private fun loadInitialData() {
@@ -96,12 +183,30 @@ class BibleViewModel(
                 val translationsList = repository.getTranslations(lang)
                 val prefTransId = repository.preferences.selectedTranslation
                 val chosenTrans = translationsList.find { it.id == prefTransId }
+                    ?: translationsList.find { it.language == lang }
                     ?: translationsList.firstOrNull()
+
+                val prefParallelId = repository.preferences.parallelTranslation
+                val chosenParallel = translationsList.find { it.id == prefParallelId }
+                    ?: translationsList.firstOrNull { it.language == lang && it.id != chosenTrans?.id }
+                    ?: translationsList.firstOrNull { it.id != chosenTrans?.id }
+
+                // Apply initial book resolution
+                val (resolvedBookId, resolvedChapter) = if (chosenTrans != null) {
+                    resolveBookForTranslation(chosenTrans.id, repository.preferences.selectedBook)
+                } else {
+                    Pair(repository.preferences.selectedBook, repository.preferences.selectedChapter)
+                }
+                val resolvedBook = repository.getBook(resolvedBookId, lang)
 
                 _uiState.update {
                     it.copy(
                         translations = translationsList,
                         selectedTranslation = chosenTrans,
+                        parallelTranslation = chosenParallel,
+                        selectedBook = resolvedBook,
+                        selectedChapter = resolvedChapter,
+                        availableChapters = (1..resolvedBook.chapterCount).toList(),
                         chapterCompTranslations = repository.preferences.comparisonTranslations.toList()
                     )
                 }
@@ -110,7 +215,7 @@ class BibleViewModel(
                 loadNotes()
                 loadRecentSearches()
             } catch (e: Exception) {
-                _uiState.update { it.copy(toastMessage = "Error loading translations: ${e.message}") }
+                _uiState.update { it.copy(toastMessage = "Błąd wczytywania tłumaczeń: ${e.message}") }
             }
         }
     }
@@ -129,9 +234,93 @@ class BibleViewModel(
                 )
                 _uiState.update { it.copy(verses = versesList, isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, toastMessage = "Error loading verses: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, toastMessage = "Błąd wczytywania wersetów: ${e.message}") }
             }
         }
+
+        if (_uiState.value.isParallelReading) {
+            loadParallelVerses()
+        }
+    }
+
+    fun loadParallelVerses() {
+        val state = _uiState.value
+        val parallelTrans = state.parallelTranslation ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isParallelLoading = true) }
+            kotlinx.coroutines.delay(200)
+            try {
+                val pVerses = repository.getVerses(
+                    language = state.appLanguage,
+                    translationId = parallelTrans.id,
+                    bookId = state.selectedBook.id,
+                    chapterId = state.selectedChapter
+                )
+                _uiState.update { it.copy(parallelVerses = pVerses, isParallelLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isParallelLoading = false) }
+            }
+        }
+    }
+
+    fun toggleParallelReading(enabled: Boolean? = null) {
+        val current = _uiState.value.isParallelReading
+        val next = enabled ?: !current
+        repository.preferences.isParallelReading = next
+        _uiState.update { it.copy(isParallelReading = next) }
+        if (next) {
+            if (_uiState.value.parallelTranslation == null) {
+                val currentTransId = _uiState.value.selectedTranslation?.id
+                val parallel = _uiState.value.translations.find {
+                    it.language == _uiState.value.appLanguage && it.id != currentTransId
+                } ?: _uiState.value.translations.firstOrNull { it.id != currentTransId }
+                _uiState.update { it.copy(parallelTranslation = parallel) }
+                if (parallel != null) {
+                    repository.preferences.parallelTranslation = parallel.id
+                }
+            }
+            loadParallelVerses()
+        }
+    }
+
+    fun selectParallelTranslation(translation: Translation) {
+        repository.preferences.parallelTranslation = translation.id
+        _uiState.update { it.copy(parallelTranslation = translation) }
+        loadParallelVerses()
+    }
+
+    fun swapParallelTranslations() {
+        val state = _uiState.value
+        val t1 = state.selectedTranslation ?: return
+        val t2 = state.parallelTranslation ?: return
+        val v1 = state.verses
+        val v2 = state.parallelVerses
+
+        repository.preferences.selectedTranslation = t2.id
+        repository.preferences.parallelTranslation = t1.id
+
+        _uiState.update {
+            it.copy(
+                selectedTranslation = t2,
+                parallelTranslation = t1,
+                verses = v2,
+                parallelVerses = v1
+            )
+        }
+    }
+
+    fun toggleParallelLayout(columns: Boolean? = null) {
+        val current = _uiState.value.parallelLayoutColumns
+        val next = columns ?: !current
+        repository.preferences.parallelLayoutColumns = next
+        _uiState.update { it.copy(parallelLayoutColumns = next) }
+    }
+
+    fun toggleParallelDifferences(show: Boolean? = null) {
+        val current = _uiState.value.parallelShowDifferences
+        val next = show ?: !current
+        repository.preferences.parallelShowDifferences = next
+        _uiState.update { it.copy(parallelShowDifferences = next) }
     }
 
     fun selectBook(book: BookInfo) {
@@ -158,7 +347,25 @@ class BibleViewModel(
     fun selectTranslation(translation: Translation) {
         repository.preferences.selectedTranslation = translation.id
         _uiState.update { it.copy(selectedTranslation = translation) }
-        loadVerses()
+        viewModelScope.launch {
+            val currentBookId = _uiState.value.selectedBook.id
+            val (resolvedBookId, resolvedChapter) = resolveBookForTranslation(translation.id, currentBookId)
+            if (resolvedBookId != currentBookId) {
+                val lang = _uiState.value.appLanguage
+                val newBook = repository.getBook(resolvedBookId, lang)
+                repository.preferences.selectedBook = resolvedBookId
+                repository.preferences.selectedChapter = resolvedChapter
+                _uiState.update {
+                    it.copy(
+                        selectedBook = newBook,
+                        availableChapters = (1..newBook.chapterCount).toList(),
+                        selectedChapter = resolvedChapter,
+                        highlightedVerse = null
+                    )
+                }
+            }
+            loadVerses()
+        }
     }
 
     fun toggleFavorite(translationId: String) {

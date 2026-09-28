@@ -88,6 +88,18 @@ object BookCatalog {
         return books.map { it.toBookInfo(language) }
     }
 
+    fun getOldTestamentBookIds(): Set<String> {
+        return books.filter { it.group == BookGroup.OT }.map { it.id }.toSet()
+    }
+
+    fun getNewTestamentBookIds(): Set<String> {
+        return books.filter { it.group == BookGroup.NT }.map { it.id }.toSet()
+    }
+
+    fun getBooksByGroup(group: BookGroup, language: String = "en"): List<BookInfo> {
+        return books.filter { it.group == group }.map { it.toBookInfo(language) }
+    }
+
     fun getBook(id: String, language: String = "en"): BookInfo {
         return bookMap[id]?.toBookInfo(language)
             ?: BookInfo(id, id.uppercase(), id.uppercase(), BookGroup.OT, 1)

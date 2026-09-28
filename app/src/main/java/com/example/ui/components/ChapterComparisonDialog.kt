@@ -56,8 +56,19 @@ fun ChapterComparisonDialog(
     onLoadComparison: (List<String>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var trans1 by remember { mutableStateOf(selectedTranslations.getOrNull(0) ?: "en_kjv") }
-    var trans2 by remember { mutableStateOf(selectedTranslations.getOrNull(1) ?: "pl_ubg") }
+    val sortedTranslations = remember(allTranslations, currentLanguage) {
+        allTranslations.sortedWith(
+            compareByDescending<Translation> { it.language.lowercase() == currentLanguage.lowercase() }
+                .thenByDescending { it.isFavorite }
+                .thenBy { it.name }
+        )
+    }
+
+    val defaultFirst = sortedTranslations.find { it.language == currentLanguage }?.id ?: "pl_ubg"
+    val defaultSecond = sortedTranslations.filter { it.language == currentLanguage }.getOrNull(1)?.id ?: "pl_bt5"
+
+    var trans1 by remember { mutableStateOf(selectedTranslations.getOrNull(0) ?: defaultFirst) }
+    var trans2 by remember { mutableStateOf(selectedTranslations.getOrNull(1) ?: defaultSecond) }
 
     var expanded1 by remember { mutableStateOf(false) }
     var expanded2 by remember { mutableStateOf(false) }
@@ -130,9 +141,9 @@ fun ChapterComparisonDialog(
                             )
                         }
                         DropdownMenu(expanded = expanded1, onDismissRequest = { expanded1 = false }) {
-                            allTranslations.forEach { t ->
+                            sortedTranslations.forEach { t ->
                                 DropdownMenuItem(
-                                    text = { Text("${t.id.uppercase()} - ${t.name}") },
+                                    text = { Text("[${t.language.uppercase()}] ${t.name}") },
                                     onClick = {
                                         trans1 = t.id
                                         expanded1 = false
@@ -159,9 +170,9 @@ fun ChapterComparisonDialog(
                             )
                         }
                         DropdownMenu(expanded = expanded2, onDismissRequest = { expanded2 = false }) {
-                            allTranslations.forEach { t ->
+                            sortedTranslations.forEach { t ->
                                 DropdownMenuItem(
-                                    text = { Text("${t.id.uppercase()} - ${t.name}") },
+                                    text = { Text("[${t.language.uppercase()}] ${t.name}") },
                                     onClick = {
                                         trans2 = t.id
                                         expanded2 = false

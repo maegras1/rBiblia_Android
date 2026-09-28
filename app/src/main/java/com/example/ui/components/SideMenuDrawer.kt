@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,8 @@ import com.example.ui.util.Strings
 @Composable
 fun SideMenuDrawer(
     currentLanguage: String,
+    isParallelReading: Boolean = false,
+    onToggleParallelReading: () -> Unit = {},
     onSelectTranslations: () -> Unit,
     onSelectNotes: () -> Unit,
     onSelectSearch: () -> Unit,
@@ -117,6 +120,16 @@ fun SideMenuDrawer(
                 onClick = {
                     onCloseDrawer()
                     onSelectChapterComparison()
+                }
+            )
+
+            SideMenuItem(
+                icon = Icons.Default.VerticalSplit,
+                title = Strings.get("parallel_reading", currentLanguage),
+                testTag = "drawer_item_parallel_reading",
+                onClick = {
+                    onCloseDrawer()
+                    onToggleParallelReading()
                 }
             )
 

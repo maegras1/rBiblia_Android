@@ -86,6 +86,7 @@ fun BibleApp(viewModel: BibleViewModel) {
     var showBookSelector by remember { mutableStateOf(false) }
     var showChapterSelector by remember { mutableStateOf(false) }
     var showTranslationSelector by remember { mutableStateOf(false) }
+    var showParallelTranslationSelector by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var showChapterComparison by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -105,6 +106,7 @@ fun BibleApp(viewModel: BibleViewModel) {
         showBookSelector ||
         showChapterSelector ||
         showTranslationSelector ||
+        showParallelTranslationSelector ||
         showSearchDialog ||
         showChapterComparison ||
         showSettingsDialog ||
@@ -124,6 +126,8 @@ fun BibleApp(viewModel: BibleViewModel) {
             showChapterSelector = false
         } else if (showTranslationSelector) {
             showTranslationSelector = false
+        } else if (showParallelTranslationSelector) {
+            showParallelTranslationSelector = false
         } else if (showSearchDialog) {
             showSearchDialog = false
         } else if (showChapterComparison) {
@@ -150,6 +154,8 @@ fun BibleApp(viewModel: BibleViewModel) {
         drawerContent = {
             SideMenuDrawer(
                 currentLanguage = uiState.appLanguage,
+                isParallelReading = uiState.isParallelReading,
+                onToggleParallelReading = { viewModel.toggleParallelReading() },
                 onSelectTranslations = { showTranslationSelector = true },
                 onSelectNotes = { showNotesListDialog = true },
                 onSelectSearch = { showSearchDialog = true },
@@ -166,9 +172,13 @@ fun BibleApp(viewModel: BibleViewModel) {
                     selectedBook = uiState.selectedBook,
                     selectedChapter = uiState.selectedChapter,
                     selectedTranslation = uiState.selectedTranslation,
+                    isParallelReading = uiState.isParallelReading,
+                    parallelTranslation = uiState.parallelTranslation,
                     onOpenBookSelector = { showBookSelector = true },
                     onOpenChapterSelector = { showChapterSelector = true },
                     onOpenTranslationSelector = { showTranslationSelector = true },
+                    onOpenParallelTranslationSelector = { showParallelTranslationSelector = true },
+                    onToggleParallelReading = { viewModel.toggleParallelReading() },
                     onOpenSearch = { showSearchDialog = true },
                     onOpenChapterComparison = { showChapterComparison = true },
                     onOpenMenu = { scope.launch { drawerState.open() } }
@@ -183,6 +193,18 @@ fun BibleApp(viewModel: BibleViewModel) {
                 translation = uiState.selectedTranslation,
                 verses = uiState.verses,
                 isLoading = uiState.isLoading,
+                isParallelReading = uiState.isParallelReading,
+                parallelTranslation = uiState.parallelTranslation,
+                parallelVerses = uiState.parallelVerses,
+                isParallelLoading = uiState.isParallelLoading,
+                parallelLayoutColumns = uiState.parallelLayoutColumns,
+                parallelShowDifferences = uiState.parallelShowDifferences,
+                onSelectPrimaryTranslation = { showTranslationSelector = true },
+                onSelectParallelTranslation = { showParallelTranslationSelector = true },
+                onSwapParallelTranslations = { viewModel.swapParallelTranslations() },
+                onToggleParallelLayout = { viewModel.toggleParallelLayout() },
+                onToggleParallelDifferences = { viewModel.toggleParallelDifferences() },
+                onCloseParallelReading = { viewModel.toggleParallelReading(false) },
                 textSize = uiState.textSize,
                 fontFamily = uiState.fontFamily,
                 continuousText = uiState.continuousText,
@@ -239,6 +261,22 @@ fun BibleApp(viewModel: BibleViewModel) {
                 viewModel.toggleFavorite(transId)
             },
             onDismiss = { showTranslationSelector = false }
+        )
+    }
+
+    if (showParallelTranslationSelector) {
+        TranslationSelectorDialog(
+            currentLanguage = uiState.appLanguage,
+            translations = uiState.translations,
+            selectedTranslation = uiState.parallelTranslation,
+            onSelectTranslation = { translation ->
+                showParallelTranslationSelector = false
+                viewModel.selectParallelTranslation(translation)
+            },
+            onToggleFavorite = { transId ->
+                viewModel.toggleFavorite(transId)
+            },
+            onDismiss = { showParallelTranslationSelector = false }
         )
     }
 

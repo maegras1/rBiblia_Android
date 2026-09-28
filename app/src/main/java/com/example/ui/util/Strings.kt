@@ -3,7 +3,7 @@ package com.example.ui.util
 object Strings {
     private val pl = mapOf(
         "about" to "O programie",
-        "about_desc" to "rBiblia to wieloprzekładowy czytnik Pisma Świętego z zaawansowaną porównywarką wersetów, notatkami i szybkim wyszukiwaniem.",
+        "about_desc" to "rBiblia to wieloprzekładowy czytnik Pisma Świętego z zaawansowaną porównywarką wersetów, czytaniem równoległym, notatkami i szybkim wyszukiwaniem.",
         "add_note" to "Dodaj notatkę",
         "all_translations" to "Wszystkie tłumaczenia",
         "cancel" to "Anuluj",
@@ -56,12 +56,25 @@ object Strings {
         "verse_layout" to "Układ tekstu",
         "verse_numbers" to "Numery wersetów",
         "zen_mode" to "Tryb Zen (pełny ekran)",
-        "zen_mode_hint" to "Maksymalna przestrzeń do czytania bez rozpraszaczy"
+        "zen_mode_hint" to "Maksymalna przestrzeń do czytania bez rozpraszaczy",
+        "lang_all" to "Wszystkie",
+        "lang_pl" to "Polski",
+        "lang_en" to "English",
+        "lang_de" to "Deutsch",
+        "filter_by_language" to "Język przekładu",
+        "parallel_reading" to "Czytanie równoległe",
+        "parallel_mode_hint" to "Porównuj dwa przekłady symultanicznie",
+        "select_parallel_translation" to "Wybierz drugi przekład",
+        "parallel_columns" to "Dwie kolumny",
+        "parallel_stacked" to "Wiersz pod wierszem",
+        "swap_translations" to "Zamień przekłady",
+        "parallel_missing_book" to "Ten przekład nie zawiera bieżącej księgi",
+        "highlight_diff" to "Różnice"
     )
 
     private val en = mapOf(
         "about" to "About",
-        "about_desc" to "rBiblia is a multi-translation Holy Bible reader with verse comparison, personal notes, and fast search.",
+        "about_desc" to "rBiblia is a multi-translation Holy Bible reader with verse comparison, parallel reading, personal notes, and fast search.",
         "add_note" to "Add Note",
         "all_translations" to "All Translations",
         "cancel" to "Cancel",
@@ -114,12 +127,25 @@ object Strings {
         "verse_layout" to "Verse Layout",
         "verse_numbers" to "Verse Numbers",
         "zen_mode" to "Zen Mode",
-        "zen_mode_hint" to "Minimalist reading experience"
+        "zen_mode_hint" to "Minimalist reading experience",
+        "lang_all" to "All",
+        "lang_pl" to "Polish",
+        "lang_en" to "English",
+        "lang_de" to "German",
+        "filter_by_language" to "Translation Language",
+        "parallel_reading" to "Parallel Reading",
+        "parallel_mode_hint" to "Read two translations side-by-side",
+        "select_parallel_translation" to "Select Second Translation",
+        "parallel_columns" to "Two Columns",
+        "parallel_stacked" to "Stacked Rows",
+        "swap_translations" to "Swap Translations",
+        "parallel_missing_book" to "This translation does not contain current book",
+        "highlight_diff" to "Differences"
     )
 
     private val de = mapOf(
         "about" to "Über das Programm",
-        "about_desc" to "rBiblia ist ein mehrsprachiger Bibel-Reader mit Versvergleich, Notizen und schneller Suche.",
+        "about_desc" to "rBiblia ist ein mehrsprachiger Bibel-Reader mit Versvergleich, Parallellesemodus, Notizen und schneller Suche.",
         "add_note" to "Notiz hinzufügen",
         "all_translations" to "Alle Übersetzungen",
         "cancel" to "Abbrechen",
@@ -172,7 +198,20 @@ object Strings {
         "verse_layout" to "Textanordnung",
         "verse_numbers" to "Versnummern",
         "zen_mode" to "Zen-Modus",
-        "zen_mode_hint" to "Ablenkungsfreies Lesen"
+        "zen_mode_hint" to "Ablenkungsfreies Lesen",
+        "lang_all" to "Alle",
+        "lang_pl" to "Polnisch",
+        "lang_en" to "Englisch",
+        "lang_de" to "Deutsch",
+        "filter_by_language" to "Sprache der Übersetzung",
+        "parallel_reading" to "Paralleles Lesen",
+        "parallel_mode_hint" to "Zwei Übersetzungen nebeneinander lesen",
+        "select_parallel_translation" to "Zweite Übersetzung wählen",
+        "parallel_columns" to "Zwei Spalten",
+        "parallel_stacked" to "Zeile unter Zeile",
+        "swap_translations" to "Übersetzungen tauschen",
+        "parallel_missing_book" to "Diese Übersetzung enthält das aktuelle Buch nicht",
+        "highlight_diff" to "Unterschiede"
     )
 
     fun get(key: String, language: String): String {

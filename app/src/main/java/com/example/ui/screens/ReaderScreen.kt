@@ -3,7 +3,6 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,20 +21,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +52,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,8 +63,8 @@ import com.example.data.model.Translation
 import com.example.data.model.Verse
 import com.example.ui.theme.HighlightNoteColor
 import com.example.ui.theme.getFontFamily
+import com.example.ui.util.DiffUtil
 import com.example.ui.util.Strings
-import kotlin.math.abs
 
 @Composable
 fun ReaderScreen(
@@ -70,6 +74,18 @@ fun ReaderScreen(
     translation: Translation?,
     verses: List<Verse>,
     isLoading: Boolean,
+    isParallelReading: Boolean = false,
+    parallelTranslation: Translation? = null,
+    parallelVerses: List<Verse> = emptyList(),
+    isParallelLoading: Boolean = false,
+    parallelLayoutColumns: Boolean = true,
+    parallelShowDifferences: Boolean = false,
+    onSelectPrimaryTranslation: () -> Unit = {},
+    onSelectParallelTranslation: () -> Unit = {},
+    onSwapParallelTranslations: () -> Unit = {},
+    onToggleParallelLayout: () -> Unit = {},
+    onToggleParallelDifferences: () -> Unit = {},
+    onCloseParallelReading: () -> Unit = {},
     textSize: TextSize,
     fontFamily: TextFontFamily,
     continuousText: Boolean,
@@ -132,7 +148,7 @@ fun ReaderScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -142,7 +158,127 @@ fun ReaderScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
-                    if (translation != null) {
+
+                    if (isParallelReading) {
+                        // Parallel Reading Header with Quick Swap, Translation Pickers, Layout & Diff Controls
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                // Primary Translation Pill
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                    modifier = Modifier
+                                        .clickable { onSelectPrimaryTranslation() }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = translation?.id?.uppercase() ?: "T1",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                // Swap Button
+                                IconButton(
+                                    onClick = onSwapParallelTranslations,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .padding(horizontal = 2.dp)
+                                        .testTag("swap_parallel_translations_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapHoriz,
+                                        contentDescription = Strings.get("swap_translations", currentLanguage),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // Secondary Translation Pill
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                                    modifier = Modifier
+                                        .clickable { onSelectParallelTranslation() }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = parallelTranslation?.id?.uppercase() ?: Strings.get("select_parallel_translation", currentLanguage).take(6),
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Layout Toggle (Columns vs Stacked)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (parallelLayoutColumns) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier
+                                        .clickable { onToggleParallelLayout() }
+                                        .padding(vertical = 2.dp)
+                                        .testTag("toggle_parallel_layout_button")
+                                ) {
+                                    Text(
+                                        text = if (parallelLayoutColumns) "‖‖ Kolumny" else "≡ Wiersze",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (parallelLayoutColumns) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // Diff Highlight Toggle
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (parallelShowDifferences) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier
+                                        .clickable { onToggleParallelDifferences() }
+                                        .padding(vertical = 2.dp)
+                                        .testTag("toggle_parallel_diff_button")
+                                ) {
+                                    Text(
+                                        text = Strings.get("highlight_diff", currentLanguage),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (parallelShowDifferences) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // Close Button
+                                IconButton(
+                                    onClick = onCloseParallelReading,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close parallel reading",
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (translation != null) {
                         Text(
                             text = translation.name,
                             style = MaterialTheme.typography.labelMedium,
@@ -151,10 +287,226 @@ fun ReaderScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Verses View: Continuous Text or Verse-by-Verse
-                if (continuousText) {
+                // Verses View: Parallel Reading Mode OR Single Translation Mode
+                if (isParallelReading) {
+                    val allVerseNumbers = remember(verses, parallelVerses) {
+                        (verses.map { it.number } + parallelVerses.map { it.number }).distinct().sorted()
+                    }
+
+                    val versesMap = remember(verses) { verses.associateBy { it.number } }
+                    val parallelMap = remember(parallelVerses) { parallelVerses.associateBy { it.number } }
+
+                    // Notice if parallel translation does not contain this book
+                    if (parallelVerses.isEmpty() && !isParallelLoading && verses.isNotEmpty() && parallelTranslation != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clickable { onSelectParallelTranslation() }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "ℹ ${Strings.get("parallel_missing_book", currentLanguage)} (${parallelTranslation.id.uppercase()}). Dotknij, aby zmienić.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("parallel_verses_list_view")
+                    ) {
+                        items(allVerseNumbers, key = { it }) { verseNum ->
+                            val v1 = versesMap[verseNum]
+                            val v2 = parallelMap[verseNum]
+                            val isHighlighted = verseNum == highlightedVerse
+                            val hasNote = v1?.hasNote == true || v2?.hasNote == true
+
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = when {
+                                        isHighlighted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                        hasNote -> HighlightNoteColor
+                                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("parallel_verse_card_$verseNum")
+                                    .clickable {
+                                        val activeVerse = v1 ?: v2 ?: Verse(number = verseNum, text = "")
+                                        onVerseClick(activeVerse)
+                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    // Verse Number Header Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "${Strings.get("verse_numbers", currentLanguage).take(3)} $verseNum",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+
+                                        if (hasNote) {
+                                            Icon(
+                                                imageVector = Icons.Default.Bookmark,
+                                                contentDescription = "Has note",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (parallelLayoutColumns) {
+                                        // Two Columns Layout (Side-by-side)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            // Left translation
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = translation?.id?.uppercase() ?: "T1",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = v1?.text ?: if (isLoading) "..." else "—",
+                                                    fontFamily = font,
+                                                    fontSize = baseFontSize,
+                                                    lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                    color = MaterialTheme.colorScheme.onBackground
+                                                )
+                                            }
+
+                                            // Divider
+                                            VerticalDivider(
+                                                modifier = Modifier
+                                                    .height(48.dp)
+                                                    .align(Alignment.CenterVertically),
+                                                color = MaterialTheme.colorScheme.outlineVariant
+                                            )
+
+                                            // Right translation
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = parallelTranslation?.id?.uppercase() ?: "T2",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                val v2Text = v2?.text
+                                                if (v2Text != null && parallelShowDifferences && v1?.text != null) {
+                                                    val annotated = DiffUtil.highlightDifferences(v1.text, v2Text)
+                                                    Text(
+                                                        text = annotated,
+                                                        fontFamily = font,
+                                                        fontSize = baseFontSize,
+                                                        lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                        color = MaterialTheme.colorScheme.onBackground
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = v2Text ?: if (isParallelLoading) "..." else "—",
+                                                        fontFamily = font,
+                                                        fontSize = baseFontSize,
+                                                        lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                        color = MaterialTheme.colorScheme.onBackground
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // Stacked / Interlinear Layout (Full-width rows)
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // Primary translation row
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                Text(
+                                                    text = translation?.name ?: (translation?.id?.uppercase() ?: "T1"),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = v1?.text ?: if (isLoading) "..." else "—",
+                                                    fontFamily = font,
+                                                    fontSize = baseFontSize,
+                                                    lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                    color = MaterialTheme.colorScheme.onBackground
+                                                )
+                                            }
+
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                            // Secondary translation row
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                Text(
+                                                    text = parallelTranslation?.name ?: (parallelTranslation?.id?.uppercase() ?: "T2"),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                val v2Text = v2?.text
+                                                if (v2Text != null && parallelShowDifferences && v1?.text != null) {
+                                                    val annotated = DiffUtil.highlightDifferences(v1.text, v2Text)
+                                                    Text(
+                                                        text = annotated,
+                                                        fontFamily = font,
+                                                        fontSize = baseFontSize,
+                                                        lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                        color = MaterialTheme.colorScheme.onBackground
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = v2Text ?: if (isParallelLoading) "..." else "—",
+                                                        fontFamily = font,
+                                                        fontSize = baseFontSize,
+                                                        lineHeight = (baseFontSize.value * 1.45f).sp,
+                                                        color = MaterialTheme.colorScheme.onBackground
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (continuousText) {
                     // Continuous Text Mode
                     val continuousString = buildAnnotatedString {
                         for (v in verses) {

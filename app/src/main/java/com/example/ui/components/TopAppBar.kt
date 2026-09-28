@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,9 +42,13 @@ fun BibleTopAppBar(
     selectedBook: BookInfo,
     selectedChapter: Int,
     selectedTranslation: Translation?,
+    isParallelReading: Boolean = false,
+    parallelTranslation: Translation? = null,
     onOpenBookSelector: () -> Unit,
     onOpenChapterSelector: () -> Unit,
     onOpenTranslationSelector: () -> Unit,
+    onOpenParallelTranslationSelector: () -> Unit = {},
+    onToggleParallelReading: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onOpenChapterComparison: () -> Unit,
     onOpenMenu: () -> Unit,
@@ -70,13 +75,13 @@ fun BibleTopAppBar(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = "${selectedBook.sigla} $selectedChapter",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                fontSize = 14.sp
                             ),
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -84,42 +89,89 @@ fun BibleTopAppBar(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = "Select Book or Chapter",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                // Translation Pill
+                // Primary Translation Pill
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = if (isParallelReading) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier
                         .testTag("translation_selector_button")
                         .clickable { onOpenTranslationSelector() }
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = selectedTranslation?.id?.uppercase() ?: "KJV",
+                            text = selectedTranslation?.id?.uppercase() ?: "UBG",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
+                                fontSize = 12.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = "Select Translation",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
                         )
+                    }
+                }
+
+                // If in Parallel Mode: Secondary Translation Pill
+                if (isParallelReading) {
+                    Text(
+                        text = "‖",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .testTag("parallel_translation_selector_button")
+                            .clickable { onOpenParallelTranslationSelector() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = parallelTranslation?.id?.uppercase() ?: "BT5",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Select Second Translation",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
         },
         actions = {
+            IconButton(
+                onClick = onToggleParallelReading,
+                modifier = Modifier.testTag("toggle_parallel_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerticalSplit,
+                    contentDescription = "Toggle Parallel Reading",
+                    tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             IconButton(
                 onClick = onOpenSearch,
                 modifier = Modifier.testTag("search_button")
