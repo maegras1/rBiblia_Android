@@ -1,0 +1,6 @@
+{
+  "name": "rBiblia",
+  "description": "Multi-translation Bible reader, chapter & verse comparison, notes, and search",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

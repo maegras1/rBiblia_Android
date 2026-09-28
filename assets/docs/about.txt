@@ -1,0 +1,7 @@
+Witaj w przeglądarkowej wersji aplikacji rBiblia. Powstała ona, aby wypełnić lukę na urządzeniach mobilnych do czasu stworzenia natywnej wersji działającej w pełni na systemie Android.
+
+Aplikacja jest dostępna pod adresem https://rbiblia.app i całkowicie darmowa. Nie wymaga rejestracji ani logowania. Wszystkie dane przetwarzane w programie nie są przechowywane na serwerze i pozostają wyłącznie w przeglądarce użytkownika (np. notatki).
+
+Kod źródłowy aplikacji jest otwarty i dostępny pod adresem: https://github.com/rBiblia/rbiblia-web
+
+Więcej informacji o projekcie rBiblia można znaleźć na stronie domowej: https://rbiblia.toborek.info

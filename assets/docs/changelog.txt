@@ -1,0 +1,79 @@
+Strona domowa projektu:
+https://rbiblia.app
+
+Kod źródłowy aplikacji na GitHubie:
+https://github.com/rBiblia/rbiblia-web
+
+Lista autorów:
+https://github.com/rBiblia/rbiblia-web/graphs/contributors
+
+Strona domowa rBiblii (wersja dla Windows):
+https://rbiblia.toborek.info
+
+Strona z zasobami dla programistów:
+https://rbiblia.github.io
+
+Dziennik wydań (od najnowszych):
+
+2026-07-02:
+- dodano możliwość zgłaszania błędów w tłumaczeniu, analogicznie do wersji komputerowej,
+- dodano możliwość wyświetlania treści rozdziału w układzie ciągłym lub z podziałem na poszczególne wersety,
+- zmieniono sposób działania menu kontekstowego dla wybranego rozdziału (usunięto ikony po lewej stronie na rzecz menu ekranowego).
+
+2026-04-20 (v2):
+Kompletnie przebudowana wersja aplikacji wprowadza wiele nowych funkcjonalności, takich jak wyszukiwanie, ustawienia, notatki czy porównywanie wersetów. Zmian jest tak dużo, że nie sposób wymienić ich wszystkich. To również pierwsza odsłona, która została przygotowana przy wsparciu agentów AI.
+Za rozwój aplikacji odpowiada Maciej Wajdzik, który poświęcił swój czas oraz środki finansowe, aby wynieść projekt na wyższy poziom. Wraz z tą aktualizacją aplikacja została przeniesiona pod nową domenę https://rbiblia.app, co ma ułatwić korzystanie z niej.
+Stara wersja wciąż jest dostępna pod adresem https://web.rbiblia.toborek.info, jednak nie będzie już dalej rozwijana i z czasem zostanie wyłączona.
+
+2024-10-16:
+- poprawiono zapamiętywanie ostatnio oglądanego rozdziału przy wyborze tłumaczenia.
+
+2024-08-29:
+- dodano niemieckie tłumaczenie wraz z przekładami (tłumaczenie zostało przygotowane przez Przemka Sibera ze strony monoteizm.pl, dziękuję),
+- przebudowa i usprawnienie kodu po stronie przeglądarki.
+
+2024-04-12:
+- poprawiono wyświetlanie przycisków nawigacyjnych na urządzeniach mobilnych,
+- poprawiono nieprawidłowe działanie przycisków nawigacyjnych w niektórych tłumaczeniach.
+
+2024-04-05:
+- dodano przyciski nawigacyjne dla ksiąg oraz rozdziałów,
+- dodano podświetlenie aktualnie zaznaczonego wersetu,
+- przebudowa i wiele poprawek kodu po stronie serwerowej.
+
+2022-12-28:
+- naprawiono błąd uniemożliwiający wyświetlenie strony w przypadku, gdy język przeglądarki ustawiony był na inny niż angielski lub polski.
+
+2022-10-10:
+- po raz kolejny podejmujemy próbę poprawienia wyświetlania stopki na niektórych urządzeniach mobilnych.
+
+2022-09-14:
+- jeszcze jedna próba poprawienia wyświetlania stopki na niektórych urządzeniach mobilnych.
+
+2022-09-12:
+- poprawiono wyświetlanie stopki na niektórych urządzeniach mobilnych.
+
+2022-08-29:
+- dodano zapobieganie zmianom księgi i rozdziałów podczas zmiany tłumaczenia.
+
+2022-07-27:
+- dodano pełne wsparcie dla tłumaczeń interfejsu użytkownika (w tym również dla nazw ksiąg),
+- usunięto identyfikator księgi wyświetlany przy numerze wersetu,
+- wiele mniejszych poprawek i usprawnień w kodzie aplikacji.
+
+2022-06-28:
+- dodano podstawowe wsparcie dla tłumaczeń interfejsu użytkownika.
+
+2021-12-24:
+- dodano wyświetlanie daty wydania tłumaczenia na liście wszystkich tłumaczeń do wyboru.
+
+2021-10-16:
+- dodano zapamiętywanie ostatnio oglądanego tłumaczenia/księgi/rozdziału,
+- dodano alfabetyczne sortowanie listy tłumaczeń,
+- poprawiono wyświetlanie identyfikatora wersetu w niektórych rozdziałach.
+
+2021-09-30:
+- dodano aktualizację paska adresu po zmianie wskazania bieżącego rozdziału. Funkcja ta działa w dwie strony i umożliwia otwarcie aplikacji z wybranym tłumaczeniem, księgą i rozdziałem.
+
+2021-09-29 (v1):
+- pierwsze (prawie) publiczne odpalenie aplikacji, jest jeszcze wiele do zrobienia.
