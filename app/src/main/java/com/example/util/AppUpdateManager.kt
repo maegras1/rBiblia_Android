@@ -31,8 +31,13 @@ object AppUpdateManager {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    const val CURRENT_VERSION = "1.0.0"
-    val GITHUB_REPO: String = if (BuildConfig.GITHUB_UPDATE_REPO.isNotBlank()) {
+    val CURRENT_VERSION: String = BuildConfig.VERSION_NAME
+    val GITHUB_REPO: String = if (
+        BuildConfig.GITHUB_UPDATE_REPO.isNotBlank() &&
+        BuildConfig.GITHUB_UPDATE_REPO != "none" &&
+        BuildConfig.GITHUB_UPDATE_REPO != "owner/repo" &&
+        !BuildConfig.GITHUB_UPDATE_REPO.contains("example.com")
+    ) {
         BuildConfig.GITHUB_UPDATE_REPO
     } else {
         "maegras1/rBiblia_Android"

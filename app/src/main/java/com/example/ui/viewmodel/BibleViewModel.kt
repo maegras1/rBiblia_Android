@@ -7,6 +7,7 @@ import com.example.data.model.BookInfo
 import com.example.data.model.DarkVariant
 import com.example.data.model.ErrorReport
 import com.example.data.model.SearchResult
+import com.example.BuildConfig
 import com.example.data.model.SearchScope
 import com.example.data.model.TextFontFamily
 import com.example.data.model.TextSize
@@ -15,6 +16,8 @@ import com.example.data.model.Translation
 import com.example.data.model.Verse
 import com.example.data.model.VerseNote
 import com.example.data.repository.BibleRepository
+import com.example.service.GitHubUpdateService
+import com.example.service.UpdateStatus
 import com.example.ui.util.DiffMode
 import com.example.ui.util.Strings
 import com.example.util.AppUpdateManager
@@ -77,7 +80,8 @@ data class BibleUiState(
 )
 
 class BibleViewModel(
-    private val repository: BibleRepository
+    private val repository: BibleRepository,
+    private val updateService: GitHubUpdateService? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -207,6 +211,7 @@ class BibleViewModel(
         viewModelScope.launch {
             val lang = _uiState.value.appLanguage
             try {
+                repository.syncBooksFromApi(lang)
                 val translationsList = repository.getTranslations(lang)
                 val prefTransId = repository.preferences.selectedTranslation
                 val chosenTrans = translationsList.find { it.id == prefTransId }
@@ -936,15 +941,18 @@ class BibleViewModel(
 
     fun setAppLanguage(lang: String) {
         repository.preferences.appLanguage = lang
-        val currentBookId = _uiState.value.selectedBook.id
-        val updatedBook = repository.getBook(currentBookId, lang)
-        _uiState.update {
-            it.copy(
-                appLanguage = lang,
-                selectedBook = updatedBook
-            )
+        viewModelScope.launch {
+            repository.syncBooksFromApi(lang)
+            val currentBookId = _uiState.value.selectedBook.id
+            val updatedBook = repository.getBook(currentBookId, lang)
+            _uiState.update {
+                it.copy(
+                    appLanguage = lang,
+                    selectedBook = updatedBook
+                )
+            }
+            loadInitialData()
         }
-        loadInitialData()
     }
 
     fun clearToast() {
@@ -1011,15 +1019,40 @@ class BibleViewModel(
     fun checkForAppUpdates() {
         _uiState.update { it.copy(isCheckingUpdate = true) }
         viewModelScope.launch {
-            val result = AppUpdateManager.checkForUpdates(
-                currentVersion = AppUpdateManager.CURRENT_VERSION,
-                repoOwnerAndName = AppUpdateManager.GITHUB_REPO
-            )
-            _uiState.update {
-                it.copy(
-                    isCheckingUpdate = false,
-                    updateCheckResult = result
+            if (updateService != null) {
+                val status = updateService.checkLatestRelease()
+                val result = when (status) {
+                    is UpdateStatus.UpdateAvailable -> {
+                        updateService.showUpdateNotification(status.release)
+                        UpdateCheckResult.UpdateAvailable(
+                            latestVersion = status.release.tagName,
+                            releaseName = status.release.releaseName,
+                            releaseNotes = status.release.releaseNotes,
+                            apkDownloadUrl = status.release.apkDownloadUrl,
+                            releaseUrl = status.release.releasePageUrl
+                        )
+                    }
+                    is UpdateStatus.UpToDate -> UpdateCheckResult.UpToDate
+                    is UpdateStatus.Error -> UpdateCheckResult.Error(status.message)
+                    else -> UpdateCheckResult.UpToDate
+                }
+                _uiState.update {
+                    it.copy(
+                        isCheckingUpdate = false,
+                        updateCheckResult = result
+                    )
+                }
+            } else {
+                val result = AppUpdateManager.checkForUpdates(
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    repoOwnerAndName = AppUpdateManager.GITHUB_REPO
                 )
+                _uiState.update {
+                    it.copy(
+                        isCheckingUpdate = false,
+                        updateCheckResult = result
+                    )
+                }
             }
         }
     }

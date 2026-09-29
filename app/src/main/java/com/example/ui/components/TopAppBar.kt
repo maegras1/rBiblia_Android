@@ -2,8 +2,6 @@ package com.example.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,9 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -49,8 +45,8 @@ fun BibleTopAppBar(
     onOpenTranslationSelector: () -> Unit,
     onOpenParallelTranslationSelector: () -> Unit = {},
     onToggleParallelReading: () -> Unit = {},
-    onOpenSearch: () -> Unit,
-    onOpenChapterComparison: () -> Unit,
+    onOpenSearch: () -> Unit = {},
+    onOpenChapterComparison: () -> Unit = {},
     onOpenMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,7 +59,8 @@ fun BibleTopAppBar(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 // Book & Chapter Pill
                 Surface(
@@ -94,26 +91,31 @@ fun BibleTopAppBar(
                     }
                 }
 
-                // Primary Translation Pill
+                // Primary Translation Pill with FULL NAME
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = if (isParallelReading) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier
+                        .weight(1f, fill = false)
                         .testTag("translation_selector_button")
                         .clickable { onOpenTranslationSelector() }
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = selectedTranslation?.id?.uppercase() ?: "UBG",
+                            text = selectedTranslation?.name ?: "Uwspółcześniona Biblia Gdańska",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             ),
-                            color = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
+                        Spacer(modifier = Modifier.width(2.dp))
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = "Select Translation",
@@ -123,7 +125,7 @@ fun BibleTopAppBar(
                     }
                 }
 
-                // If in Parallel Mode: Secondary Translation Pill
+                // If in Parallel Mode: Secondary Translation Pill with FULL NAME
                 if (isParallelReading) {
                     Text(
                         text = "‖",
@@ -135,21 +137,26 @@ fun BibleTopAppBar(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
                         modifier = Modifier
+                            .weight(1f, fill = false)
                             .testTag("parallel_translation_selector_button")
                             .clickable { onOpenParallelTranslationSelector() }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = parallelTranslation?.id?.uppercase() ?: "BT5",
+                                text = parallelTranslation?.name ?: "Biblia Tysiąclecia",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp
                                 ),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            Spacer(modifier = Modifier.width(2.dp))
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
                                 contentDescription = "Select Second Translation",
@@ -170,24 +177,6 @@ fun BibleTopAppBar(
                     imageVector = Icons.Default.VerticalSplit,
                     contentDescription = "Toggle Parallel Reading",
                     tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            IconButton(
-                onClick = onOpenSearch,
-                modifier = Modifier.testTag("search_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search"
-                )
-            }
-            IconButton(
-                onClick = onOpenChapterComparison,
-                modifier = Modifier.testTag("compare_chapter_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Compare,
-                    contentDescription = "Compare Chapter"
                 )
             }
             IconButton(

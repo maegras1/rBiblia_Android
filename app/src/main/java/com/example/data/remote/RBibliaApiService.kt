@@ -46,7 +46,11 @@ class RBibliaApiService {
         }
         .build()
 
-    private val baseUrl = if (BuildConfig.RBIBLIA_API_BASE_URL.isNotBlank()) {
+    private val baseUrl = if (
+        BuildConfig.RBIBLIA_API_BASE_URL.isNotBlank() &&
+        BuildConfig.RBIBLIA_API_BASE_URL != "none" &&
+        !BuildConfig.RBIBLIA_API_BASE_URL.contains("example.com")
+    ) {
         BuildConfig.RBIBLIA_API_BASE_URL.removeSuffix("/")
     } else {
         "https://rbiblia.app/api"
@@ -85,6 +89,37 @@ class RBibliaApiService {
             }
         } catch (e: Exception) {
             getFallbackTranslations()
+        }
+    }
+
+    suspend fun getBooksFromApi(language: String): Map<String, Pair<String, String>> = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/$language/book"
+        val request = Request.Builder().url(url).build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyMap()
+                val body = response.body?.string() ?: return@withContext emptyMap()
+                val json = JSONObject(body)
+                val data = json.optJSONObject("data") ?: return@withContext emptyMap()
+
+                val result = mutableMapOf<String, Pair<String, String>>()
+                val keys = data.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val bookObj = data.optJSONObject(key)
+                    if (bookObj != null) {
+                        val name = bookObj.optString("name", "")
+                        val sigla = bookObj.optString("sigla", key)
+                        if (name.isNotBlank()) {
+                            result[key] = Pair(name, sigla)
+                        }
+                    }
+                }
+                result
+            }
+        } catch (e: Exception) {
+            emptyMap()
         }
     }
 

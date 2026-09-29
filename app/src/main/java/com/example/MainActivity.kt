@@ -23,12 +23,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.example.data.local.DatabaseHelper
 import com.example.data.local.PreferencesManager
 import com.example.data.local.room.BibleDatabase
 import com.example.data.remote.RBibliaApiService
 import com.example.data.repository.BibleRepository
+import com.example.service.GitHubUpdateService
+import com.example.service.UpdateStatus
 import com.example.ui.components.AboutDialog
 import com.example.ui.components.AppUpdateDialog
 import com.example.ui.components.BibleTopAppBar
@@ -42,6 +47,7 @@ import com.example.ui.components.SearchDialog
 import com.example.ui.components.SettingsDialog
 import com.example.ui.components.SideMenuDrawer
 import com.example.ui.components.TranslationSelectorDialog
+import com.example.ui.components.UpdateAvailableDialog
 import com.example.ui.components.VerseActionsBottomSheet
 import com.example.ui.components.VerseComparisonDialog
 import com.example.ui.screens.ReaderScreen
@@ -63,8 +69,12 @@ class MainActivity : ComponentActivity() {
         val apiService = RBibliaApiService()
         val roomDb = BibleDatabase.getInstance(applicationContext)
         val repository = BibleRepository(dbHelper, prefs, apiService, roomDb)
+        val updateService = GitHubUpdateService(applicationContext)
 
-        viewModel = BibleViewModel(repository)
+        viewModel = BibleViewModel(repository, updateService)
+
+        // Check for updates in background on launch
+        updateService.checkForUpdatesAsync(notifySystemNotification = true)
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -73,15 +83,17 @@ class MainActivity : ComponentActivity() {
                 themeMode = uiState.themeMode,
                 darkVariant = uiState.darkVariant
             ) {
-                BibleApp(viewModel = viewModel)
+                BibleApp(viewModel = viewModel, updateService = updateService)
             }
         }
     }
 }
 
 @Composable
-fun BibleApp(viewModel: BibleViewModel) {
+fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
     val uiState by viewModel.uiState.collectAsState()
+    val updateStatus by updateService.status.collectAsState()
+    var showUpdatePromptDialog by remember { mutableStateOf(true) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -116,6 +128,7 @@ fun BibleApp(viewModel: BibleViewModel) {
         showSettingsDialog ||
         showAboutDialog ||
         showNotesListDialog ||
+        (updateStatus is UpdateStatus.UpdateAvailable && showUpdatePromptDialog) ||
         uiState.activeVerseForActions != null ||
         uiState.compareVerseNumber != null ||
         uiState.editingNote != null ||
@@ -143,6 +156,8 @@ fun BibleApp(viewModel: BibleViewModel) {
             showAboutDialog = false
         } else if (showNotesListDialog) {
             showNotesListDialog = false
+        } else if (updateStatus is UpdateStatus.UpdateAvailable && showUpdatePromptDialog) {
+            showUpdatePromptDialog = false
         } else if (uiState.updateCheckResult != null) {
             viewModel.dismissUpdateDialog()
         } else if (uiState.activeVerseForActions != null) {
@@ -156,43 +171,46 @@ fun BibleApp(viewModel: BibleViewModel) {
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            SideMenuDrawer(
-                currentLanguage = uiState.appLanguage,
-                isParallelReading = uiState.isParallelReading,
-                onToggleParallelReading = { viewModel.toggleParallelReading() },
-                onSelectTranslations = { showTranslationSelector = true },
-                onSelectNotes = { showNotesListDialog = true },
-                onSelectSearch = { showSearchDialog = true },
-                onSelectChapterComparison = { showChapterComparison = true },
-                onSelectSettings = { showSettingsDialog = true },
-                onSelectAbout = { showAboutDialog = true },
-                onCloseDrawer = { scope.launch { drawerState.close() } }
-            )
-        }
-    ) {
-        Scaffold(
-            topBar = {
-                BibleTopAppBar(
-                    selectedBook = uiState.selectedBook,
-                    selectedChapter = uiState.selectedChapter,
-                    selectedTranslation = uiState.selectedTranslation,
-                    isParallelReading = uiState.isParallelReading,
-                    parallelTranslation = uiState.parallelTranslation,
-                    onOpenBookSelector = { showBookSelector = true },
-                    onOpenChapterSelector = { showChapterSelector = true },
-                    onOpenTranslationSelector = { showTranslationSelector = true },
-                    onOpenParallelTranslationSelector = { showParallelTranslationSelector = true },
-                    onToggleParallelReading = { viewModel.toggleParallelReading() },
-                    onOpenSearch = { showSearchDialog = true },
-                    onOpenChapterComparison = { showChapterComparison = true },
-                    onOpenMenu = { scope.launch { drawerState.open() } }
-                )
-            },
-            snackbarHost = { SnackbarHost(snackbarHostState) }
-        ) { paddingValues ->
+    // Hamburger menu opens on the RIGHT side (same side where the button is located)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    SideMenuDrawer(
+                        currentLanguage = uiState.appLanguage,
+                        isParallelReading = uiState.isParallelReading,
+                        onToggleParallelReading = { viewModel.toggleParallelReading() },
+                        onSelectTranslations = { showTranslationSelector = true },
+                        onSelectNotes = { showNotesListDialog = true },
+                        onSelectSearch = { showSearchDialog = true },
+                        onSelectChapterComparison = { showChapterComparison = true },
+                        onSelectSettings = { showSettingsDialog = true },
+                        onSelectAbout = { showAboutDialog = true },
+                        onCloseDrawer = { scope.launch { drawerState.close() } }
+                    )
+                }
+            }
+        ) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Scaffold(
+                    topBar = {
+                        BibleTopAppBar(
+                            selectedBook = uiState.selectedBook,
+                            selectedChapter = uiState.selectedChapter,
+                            selectedTranslation = uiState.selectedTranslation,
+                            isParallelReading = uiState.isParallelReading,
+                            parallelTranslation = uiState.parallelTranslation,
+                            onOpenBookSelector = { showBookSelector = true },
+                            onOpenChapterSelector = { showChapterSelector = true },
+                            onOpenTranslationSelector = { showTranslationSelector = true },
+                            onOpenParallelTranslationSelector = { showParallelTranslationSelector = true },
+                            onToggleParallelReading = { viewModel.toggleParallelReading() },
+                            onOpenMenu = { scope.launch { drawerState.open() } }
+                        )
+                    },
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
+                ) { paddingValues ->
             ReaderScreen(
                 currentLanguage = uiState.appLanguage,
                 book = uiState.selectedBook,
@@ -225,6 +243,8 @@ fun BibleApp(viewModel: BibleViewModel) {
             )
         }
     }
+}
+}
 
     // --- Dialogs & Sheets ---
 
@@ -371,6 +391,15 @@ fun BibleApp(viewModel: BibleViewModel) {
             currentLanguage = uiState.appLanguage,
             result = updateResult,
             onDismiss = { viewModel.dismissUpdateDialog() }
+        )
+    }
+
+    // Automatic Update Prompt Dialog when GitHubUpdateService detects an update
+    if (updateStatus is UpdateStatus.UpdateAvailable && showUpdatePromptDialog) {
+        val release = (updateStatus as UpdateStatus.UpdateAvailable).release
+        UpdateAvailableDialog(
+            release = release,
+            onDismiss = { showUpdatePromptDialog = false }
         )
     }
 

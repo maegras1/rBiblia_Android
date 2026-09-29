@@ -45,6 +45,13 @@ class BibleRepository(
         return apiService.getTranslationStructure(language, translationId)
     }
 
+    suspend fun syncBooksFromApi(language: String) {
+        val books = apiService.getBooksFromApi(language)
+        if (books.isNotEmpty()) {
+            BookCatalog.updateBooksFromApi(language, books)
+        }
+    }
+
     suspend fun getVerses(
         language: String,
         translationId: String,
@@ -220,6 +227,28 @@ class BibleRepository(
             downloadChapterToCache(language, translationId, bookId, chap)
             onProgress(chap, totalChapters)
             delay(100)
+        }
+    }
+
+    suspend fun downloadEntireTranslationToCache(
+        language: String,
+        translationId: String,
+        onProgress: (currentBook: String, currentChapter: Int, totalBooks: Int) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val structure = getTranslationStructure(language, translationId)
+        val books = if (structure.isNotEmpty()) {
+            structure.keys.toList()
+        } else {
+            BookCatalog.getAllBooks(language).map { it.id }
+        }
+        val totalBooks = books.size
+        for (bookId in books) {
+            val chapters = structure[bookId] ?: (1..BookCatalog.getBook(bookId, language).chapterCount).toList()
+            for (chap in chapters) {
+                downloadChapterToCache(language, translationId, bookId, chap)
+                onProgress(bookId, chap, totalBooks)
+                delay(40)
+            }
         }
     }
 }
