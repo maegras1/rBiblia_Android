@@ -15,6 +15,10 @@ import com.example.data.model.Translation
 import com.example.data.model.Verse
 import com.example.data.model.VerseNote
 import com.example.data.repository.BibleRepository
+import com.example.ui.util.DiffMode
+import com.example.ui.util.Strings
+import com.example.util.AppUpdateManager
+import com.example.util.UpdateCheckResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,7 +51,11 @@ data class BibleUiState(
     val activeVerseForActions: Verse? = null,
     val compareVerseNumber: Int? = null,
     val comparedVerses: Map<String, String> = emptyMap(),
+    val comparisonTargetTranslations: List<String> = emptyList(),
     val showDifferences: Boolean = true,
+    val diffMode: DiffMode = DiffMode.LOOSE,
+    val comparisonLimit: Int = 4,
+    val isComparingVerse: Boolean = false,
     val chapterCompTranslations: List<String> = emptyList(),
     val chapterCompVerses: Map<String, List<Verse>> = emptyMap(),
     val isChapterCompLoading: Boolean = false,
@@ -60,7 +68,12 @@ data class BibleUiState(
     val searchResults: List<SearchResult> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     val isSearching: Boolean = false,
-    val toastMessage: String? = null
+    val toastMessage: String? = null,
+    val cachedVersesCount: Int = 0,
+    val isDownloadingBookOffline: Boolean = false,
+    val offlineDownloadProgress: Pair<Int, Int>? = null,
+    val isCheckingUpdate: Boolean = false,
+    val updateCheckResult: UpdateCheckResult? = null
 )
 
 class BibleViewModel(
@@ -80,7 +93,9 @@ class BibleViewModel(
             selectedChapter = repository.preferences.selectedChapter,
             isParallelReading = repository.preferences.isParallelReading,
             parallelLayoutColumns = repository.preferences.parallelLayoutColumns,
-            parallelShowDifferences = repository.preferences.parallelShowDifferences
+            parallelShowDifferences = repository.preferences.parallelShowDifferences,
+            diffMode = try { DiffMode.valueOf(repository.preferences.diffMode) } catch (e: Exception) { DiffMode.LOOSE },
+            comparisonLimit = repository.preferences.comparisonLimit
         )
     )
     val uiState: StateFlow<BibleUiState> = _uiState.asStateFlow()
@@ -89,15 +104,27 @@ class BibleViewModel(
         val initialLang = repository.preferences.appLanguage
         val bookId = repository.preferences.selectedBook
         val initialBook = repository.getBook(bookId, initialLang)
+        val initialDiffMode = try { DiffMode.valueOf(repository.preferences.diffMode) } catch (e: Exception) { DiffMode.LOOSE }
+        val initialCompLimit = repository.preferences.comparisonLimit
         _uiState.update {
             it.copy(
                 selectedBook = initialBook,
                 availableChapters = (1..initialBook.chapterCount).toList(),
                 isParallelReading = repository.preferences.isParallelReading,
                 parallelLayoutColumns = repository.preferences.parallelLayoutColumns,
-                parallelShowDifferences = repository.preferences.parallelShowDifferences
+                parallelShowDifferences = repository.preferences.parallelShowDifferences,
+                diffMode = initialDiffMode,
+                comparisonLimit = initialCompLimit
             )
         }
+
+        // Collect Room Database cache statistics
+        viewModelScope.launch {
+            repository.getCachedVersesCountFlow().collect { count ->
+                _uiState.update { it.copy(cachedVersesCount = count) }
+            }
+        }
+
         loadInitialData()
     }
 
@@ -425,35 +452,201 @@ class BibleViewModel(
 
     fun openVerseComparison(verse: Verse) {
         val state = _uiState.value
-        val transIds = state.translations.map { it.id }
+        val baseTrans = state.selectedTranslation
+        val parallelTrans = state.parallelTranslation
+
+        // Immediately seed base verse so dialog opens instantly with content!
+        val initialMap = mutableMapOf<String, String>()
+        val baseVerseText = if (verse.text.isNotBlank()) {
+            verse.text
+        } else {
+            state.verses.find { it.number == verse.number }?.text ?: ""
+        }
+
+        if (baseTrans != null && baseVerseText.isNotBlank()) {
+            initialMap[baseTrans.id] = baseVerseText
+        }
+        if (state.isParallelReading && parallelTrans != null) {
+            val pVerse = state.parallelVerses.find { it.number == verse.number }
+            if (pVerse != null && pVerse.text.isNotBlank()) {
+                initialMap[parallelTrans.id] = pVerse.text
+            }
+        }
+
+        // Determine targets: preferences or favorites or top translations in current language
+        val prefTargets = repository.preferences.comparisonTranslations.filter { it != baseTrans?.id }
+        val targetList = mutableListOf<String>()
+        if (prefTargets.isNotEmpty()) {
+            targetList.addAll(prefTargets)
+        } else {
+            val favs = state.translations.filter { it.isFavorite && it.id != baseTrans?.id }.map { it.id }
+            if (favs.isNotEmpty()) {
+                targetList.addAll(favs.take(state.comparisonLimit))
+            } else {
+                val sameLang = state.translations.filter {
+                    it.language.equals(state.appLanguage, ignoreCase = true) && it.id != baseTrans?.id
+                }.map { it.id }
+                targetList.addAll(sameLang.take(3))
+            }
+        }
+        if (parallelTrans != null && parallelTrans.id != baseTrans?.id && !targetList.contains(parallelTrans.id)) {
+            targetList.add(parallelTrans.id)
+        }
+
+        val finalTargets = targetList.distinct().take(state.comparisonLimit.coerceAtLeast(3))
+
         _uiState.update {
             it.copy(
                 compareVerseNumber = verse.number,
-                comparedVerses = emptyMap()
+                comparedVerses = initialMap,
+                comparisonTargetTranslations = finalTargets,
+                activeVerseForActions = null,
+                isComparingVerse = true
             )
         }
+
+        loadComparisonForVerse(verse.number, finalTargets, initialMap)
+    }
+
+    private fun loadComparisonForVerse(
+        verseNum: Int,
+        targets: List<String>,
+        existingMap: Map<String, String>
+    ) {
+        val state = _uiState.value
+        val baseTrans = state.selectedTranslation
+
         viewModelScope.launch {
-            try {
-                val results = repository.getVerseInTranslations(
-                    language = state.appLanguage,
-                    translationIds = transIds,
-                    bookId = state.selectedBook.id,
-                    chapterId = state.selectedChapter,
-                    verseId = verse.number
-                )
-                _uiState.update { it.copy(comparedVerses = results) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(toastMessage = "Error loading comparisons: ${e.message}") }
+            _uiState.update { it.copy(isComparingVerse = true) }
+            val map = existingMap.toMutableMap()
+
+            // Ensure base translation is present
+            if (baseTrans != null && !map.containsKey(baseTrans.id)) {
+                val baseText = state.verses.find { it.number == verseNum }?.text ?: ""
+                if (baseText.isNotBlank()) {
+                    map[baseTrans.id] = baseText
+                }
             }
+
+            for (tid in targets) {
+                if (map.containsKey(tid) && map[tid] != "[NOT_FOUND]") continue
+                try {
+                    val verses = repository.getVerses(
+                        language = state.appLanguage,
+                        translationId = tid,
+                        bookId = state.selectedBook.id,
+                        chapterId = state.selectedChapter
+                    )
+                    val found = verses.find { it.number == verseNum }
+                    if (found != null && found.text.isNotBlank()) {
+                        map[tid] = found.text
+                    } else {
+                        map[tid] = "[NOT_FOUND]"
+                    }
+                } catch (e: Exception) {
+                    map[tid] = "[NOT_FOUND]"
+                }
+                _uiState.update { curr ->
+                    curr.copy(comparedVerses = map.toMap())
+                }
+                kotlinx.coroutines.delay(20)
+            }
+            _uiState.update { it.copy(isComparingVerse = false) }
+        }
+    }
+
+    fun comparePreviousVerse() {
+        val currentVerse = _uiState.value.compareVerseNumber ?: return
+        if (currentVerse > 1) {
+            val newNum = currentVerse - 1
+            val baseTrans = _uiState.value.selectedTranslation
+            val initialMap = mutableMapOf<String, String>()
+            val baseText = _uiState.value.verses.find { it.number == newNum }?.text ?: ""
+            if (baseTrans != null && baseText.isNotBlank()) {
+                initialMap[baseTrans.id] = baseText
+            }
+            if (_uiState.value.isParallelReading && _uiState.value.parallelTranslation != null) {
+                val pText = _uiState.value.parallelVerses.find { it.number == newNum }?.text ?: ""
+                if (pText.isNotBlank()) {
+                    initialMap[_uiState.value.parallelTranslation!!.id] = pText
+                }
+            }
+            val targets = _uiState.value.comparisonTargetTranslations
+            _uiState.update { it.copy(compareVerseNumber = newNum, comparedVerses = initialMap) }
+            loadComparisonForVerse(newNum, targets, initialMap)
+        }
+    }
+
+    fun compareNextVerse() {
+        val currentVerse = _uiState.value.compareVerseNumber ?: return
+        val maxVerse = _uiState.value.verses.maxOfOrNull { it.number } ?: 999
+        if (currentVerse < maxVerse) {
+            val newNum = currentVerse + 1
+            val baseTrans = _uiState.value.selectedTranslation
+            val initialMap = mutableMapOf<String, String>()
+            val baseText = _uiState.value.verses.find { it.number == newNum }?.text ?: ""
+            if (baseTrans != null && baseText.isNotBlank()) {
+                initialMap[baseTrans.id] = baseText
+            }
+            if (_uiState.value.isParallelReading && _uiState.value.parallelTranslation != null) {
+                val pText = _uiState.value.parallelVerses.find { it.number == newNum }?.text ?: ""
+                if (pText.isNotBlank()) {
+                    initialMap[_uiState.value.parallelTranslation!!.id] = pText
+                }
+            }
+            val targets = _uiState.value.comparisonTargetTranslations
+            _uiState.update { it.copy(compareVerseNumber = newNum, comparedVerses = initialMap) }
+            loadComparisonForVerse(newNum, targets, initialMap)
+        }
+    }
+
+    fun addComparisonTranslation(translationId: String) {
+        val currentVerse = _uiState.value.compareVerseNumber ?: return
+        val targets = (_uiState.value.comparisonTargetTranslations + translationId).distinct()
+        val set = repository.preferences.comparisonTranslations.toMutableSet()
+        set.add(translationId)
+        repository.preferences.comparisonTranslations = set
+        _uiState.update { it.copy(comparisonTargetTranslations = targets) }
+        loadComparisonForVerse(currentVerse, listOf(translationId), _uiState.value.comparedVerses)
+    }
+
+    fun removeComparisonTranslation(translationId: String) {
+        val targets = _uiState.value.comparisonTargetTranslations.filter { it != translationId }
+        val set = repository.preferences.comparisonTranslations.toMutableSet()
+        set.remove(translationId)
+        repository.preferences.comparisonTranslations = set
+        _uiState.update { curr ->
+            curr.copy(
+                comparisonTargetTranslations = targets,
+                comparedVerses = curr.comparedVerses.filterKeys { it != translationId }
+            )
         }
     }
 
     fun closeVerseComparison() {
-        _uiState.update { it.copy(compareVerseNumber = null, comparedVerses = emptyMap()) }
+        _uiState.update {
+            it.copy(
+                compareVerseNumber = null,
+                comparedVerses = emptyMap(),
+                comparisonTargetTranslations = emptyList(),
+                isComparingVerse = false
+            )
+        }
     }
 
     fun toggleShowDifferences() {
         _uiState.update { it.copy(showDifferences = !it.showDifferences) }
+    }
+
+    fun setDiffMode(mode: DiffMode) {
+        repository.preferences.diffMode = mode.name
+        _uiState.update { it.copy(diffMode = mode) }
+    }
+
+    fun setComparisonLimit(limit: Int) {
+        val clamped = limit.coerceIn(2, 6)
+        repository.preferences.comparisonLimit = clamped
+        _uiState.update { it.copy(comparisonLimit = clamped) }
     }
 
     fun loadChapterComparison(translationIds: List<String>) {
@@ -543,6 +736,72 @@ class BibleViewModel(
             val notes = repository.getAllNotes()
             _uiState.update { it.copy(allNotes = notes) }
         }
+    }
+
+    fun exportNotesXml(): String {
+        val notes = _uiState.value.allNotes
+        val sb = StringBuilder()
+        sb.append("<notes>\n")
+        val grouped = notes.groupBy { if (it.isGlobal || it.translationId.isNullOrBlank()) "_global" else it.translationId }
+        for ((transId, nList) in grouped) {
+            sb.append("  <translation id=\"$transId\">\n")
+            for (note in nList) {
+                val escaped = note.content
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\"", "&quot;")
+                sb.append("    <note book=\"${note.bookId}\" chapter=\"${note.chapterId}\" verse=\"${note.verseId}\">$escaped</note>\n")
+            }
+            sb.append("  </translation>\n")
+        }
+        sb.append("</notes>\n")
+        return sb.toString()
+    }
+
+    fun importNotesXml(xml: String): Int {
+        var count = 0
+        try {
+            val transRegex = Regex("""<translation\s+id="([^"]+)">([\s\S]*?)</translation>""")
+            val noteRegex = Regex("""<note\s+book="([^"]+)"\s+chapter="(\d+)"\s+verse="(\d+)">([\s\S]*?)</note>""")
+            val transMatches = transRegex.findAll(xml)
+            viewModelScope.launch {
+                for (tm in transMatches) {
+                    val transId = tm.groupValues[1]
+                    val isGlobal = transId == "_global" || transId.isBlank()
+                    val actualTransId = if (isGlobal) "" else transId
+                    val notesBlock = tm.groupValues[2]
+                    for (nm in noteRegex.findAll(notesBlock)) {
+                        val bookId = nm.groupValues[1]
+                        val chapterId = nm.groupValues[2].toIntOrNull() ?: 1
+                        val verseId = nm.groupValues[3].toIntOrNull() ?: 1
+                        val content = nm.groupValues[4]
+                            .replace("&quot;", "\"")
+                            .replace("&gt;", ">")
+                            .replace("&lt;", "<")
+                            .replace("&amp;", "&")
+                        repository.saveNote(
+                            VerseNote(
+                                bookId = bookId,
+                                chapterId = chapterId,
+                                verseId = verseId,
+                                translationId = if (isGlobal) null else actualTransId,
+                                content = content,
+                                isGlobal = isGlobal,
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
+                        count++
+                    }
+                }
+                loadNotes()
+                loadVerses()
+                _uiState.update { it.copy(toastMessage = "Zaimportowano $count notatek") }
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(toastMessage = "Błąd importu XML: ${e.message}") }
+        }
+        return count
     }
 
     fun startErrorReport(verse: Verse) {
@@ -690,5 +949,82 @@ class BibleViewModel(
 
     fun clearToast() {
         _uiState.update { it.copy(toastMessage = null) }
+    }
+
+    // --- Offline Cache Management (Room Database) ---
+
+    fun clearOfflineCache() {
+        viewModelScope.launch {
+            try {
+                repository.clearRoomCache()
+                val lang = _uiState.value.appLanguage
+                _uiState.update { it.copy(toastMessage = Strings.get("cache_cleared", lang)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(toastMessage = "Błąd czyszczenia cache: ${e.message}") }
+            }
+        }
+    }
+
+    fun downloadCurrentBookOffline() {
+        val state = _uiState.value
+        val trans = state.selectedTranslation ?: return
+        val book = state.selectedBook
+        val lang = state.appLanguage
+
+        _uiState.update {
+            it.copy(
+                isDownloadingBookOffline = true,
+                offlineDownloadProgress = 0 to book.chapterCount
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                repository.downloadBookToCache(
+                    language = lang,
+                    translationId = trans.id,
+                    bookId = book.id,
+                    totalChapters = book.chapterCount
+                ) { current, total ->
+                    _uiState.update { it.copy(offlineDownloadProgress = current to total) }
+                }
+                _uiState.update {
+                    it.copy(
+                        toastMessage = "${book.name} (${trans.name}) - ${Strings.get("book_downloaded", lang)}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(toastMessage = "Błąd pobierania offline: ${e.message}") }
+            } finally {
+                _uiState.update {
+                    it.copy(
+                        isDownloadingBookOffline = false,
+                        offlineDownloadProgress = null
+                    )
+                }
+            }
+        }
+    }
+
+    // --- GitHub Updates Check ---
+
+    fun checkForAppUpdates() {
+        _uiState.update { it.copy(isCheckingUpdate = true) }
+        viewModelScope.launch {
+            val result = AppUpdateManager.checkForUpdates(
+                currentVersion = AppUpdateManager.CURRENT_VERSION,
+                repoOwnerAndName = AppUpdateManager.GITHUB_REPO
+            )
+            _uiState.update {
+                it.copy(
+                    isCheckingUpdate = false,
+                    updateCheckResult = result
+                )
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _uiState.update { it.copy(updateCheckResult = null) }
     }
 }

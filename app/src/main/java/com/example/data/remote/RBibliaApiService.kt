@@ -1,5 +1,6 @@
 package com.example.data.remote
 
+import com.example.BuildConfig
 import com.example.data.model.ErrorReport
 import com.example.data.model.SearchResult
 import com.example.data.model.Translation
@@ -20,10 +21,17 @@ class RBibliaApiService {
         .readTimeout(20, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val original = chain.request()
-            val requestWithHeaders = original.newBuilder()
+            val builder = original.newBuilder()
                 .header("User-Agent", "rBiblia-Android/1.0")
                 .header("Accept", "application/json")
-                .build()
+
+            val apiKey = BuildConfig.RBIBLIA_API_KEY
+            if (apiKey.isNotBlank() && apiKey != "none") {
+                builder.header("Authorization", if (apiKey.startsWith("Bearer ", ignoreCase = true)) apiKey else "Bearer $apiKey")
+                builder.header("X-API-Key", apiKey)
+            }
+
+            val requestWithHeaders = builder.build()
             var response = chain.proceed(requestWithHeaders)
             if (response.code == 429) {
                 try {
@@ -38,7 +46,11 @@ class RBibliaApiService {
         }
         .build()
 
-    private val baseUrl = "https://rbiblia.app/api"
+    private val baseUrl = if (BuildConfig.RBIBLIA_API_BASE_URL.isNotBlank()) {
+        BuildConfig.RBIBLIA_API_BASE_URL.removeSuffix("/")
+    } else {
+        "https://rbiblia.app/api"
+    }
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     // Memory cache for chapters
@@ -127,6 +139,9 @@ class RBibliaApiService {
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 404) {
+                        return@withContext emptyMap()
+                    }
                     return@withContext getFallbackVerses(bookId, chapterId)
                 }
                 val body = response.body?.string() ?: return@withContext emptyMap()

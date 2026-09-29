@@ -10,3 +10,6 @@
 .cxx
 *.apk
 *.aab
+.env
+.env.*
+!.env.example

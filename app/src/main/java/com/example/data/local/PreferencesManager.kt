@@ -84,6 +84,14 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("hide_verse_numbers", value).apply()
 
     var comparisonTranslations: Set<String>
-        get() = prefs.getStringSet("comparison_translations", setOf("en_kjv", "pl_ubg", "de_lb")) ?: emptySet()
+        get() = prefs.getStringSet("comparison_translations", setOf("pl_ubg", "pl_bg", "pl_bw", "en_kjv")) ?: emptySet()
         set(value) = prefs.edit().putStringSet("comparison_translations", value).apply()
+
+    var comparisonLimit: Int
+        get() = prefs.getInt("comparison_limit", 4)
+        set(value) = prefs.edit().putInt("comparison_limit", value).apply()
+
+    var diffMode: String
+        get() = prefs.getString("diff_mode", "LOOSE") ?: "LOOSE"
+        set(value) = prefs.edit().putString("diff_mode", value).apply()
 }

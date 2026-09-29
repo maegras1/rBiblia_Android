@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +45,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
 @Composable
 fun NotesListDialog(
     currentLanguage: String,
@@ -50,10 +62,14 @@ fun NotesListDialog(
     onNoteClick: (VerseNote) -> Unit,
     onDeleteNote: (Long) -> Unit,
     onExportXml: () -> String,
+    onImportXml: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    var showExportSuccess by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importText by remember { mutableStateOf("") }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -88,21 +104,45 @@ fun NotesListDialog(
                     }
                 }
 
-                // Export Button
+                // Action Buttons (Export & Import XML)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = {
                             val xml = onExportXml()
                             clipboardManager.setText(AnnotatedString(xml))
+                            showExportSuccess = true
                         }
                     ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null)
-                        Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                        Text("Export XML")
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(Strings.get("export_notes_xml", currentLanguage))
                     }
+
+                    OutlinedButton(
+                        onClick = {
+                            val clip = clipboardManager.getText()?.text ?: ""
+                            importText = if (clip.contains("<notes>")) clip else ""
+                            showImportDialog = true
+                        }
+                    ) {
+                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(Strings.get("import_notes_xml", currentLanguage))
+                    }
+                }
+
+                if (showExportSuccess) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "✓ " + Strings.get("notes_exported", currentLanguage),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -190,5 +230,47 @@ fun NotesListDialog(
                 }
             }
         }
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text(Strings.get("import_notes_xml", currentLanguage)) },
+            text = {
+                Column {
+                    Text(
+                        text = "Wklej zawartość pliku XML z notatkami:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = importText,
+                        onValueChange = { importText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        placeholder = { Text("<notes>\n  <translation id=\"_global\">...") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importText.isNotBlank()) {
+                            onImportXml(importText)
+                            showImportDialog = false
+                        }
+                    },
+                    enabled = importText.isNotBlank()
+                ) {
+                    Text("Importuj")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text(Strings.get("cancel", currentLanguage))
+                }
+            }
+        )
     }
 }

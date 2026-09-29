@@ -26,9 +26,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.example.data.local.DatabaseHelper
 import com.example.data.local.PreferencesManager
+import com.example.data.local.room.BibleDatabase
 import com.example.data.remote.RBibliaApiService
 import com.example.data.repository.BibleRepository
 import com.example.ui.components.AboutDialog
+import com.example.ui.components.AppUpdateDialog
 import com.example.ui.components.BibleTopAppBar
 import com.example.ui.components.BookSelectorDialog
 import com.example.ui.components.ChapterComparisonDialog
@@ -43,6 +45,7 @@ import com.example.ui.components.TranslationSelectorDialog
 import com.example.ui.components.VerseActionsBottomSheet
 import com.example.ui.components.VerseComparisonDialog
 import com.example.ui.screens.ReaderScreen
+import com.example.ui.util.DiffMode
 import com.example.ui.theme.RBibliaTheme
 import com.example.ui.viewmodel.BibleViewModel
 import kotlinx.coroutines.launch
@@ -58,7 +61,8 @@ class MainActivity : ComponentActivity() {
         val dbHelper = DatabaseHelper(applicationContext)
         val prefs = PreferencesManager(applicationContext)
         val apiService = RBibliaApiService()
-        val repository = BibleRepository(dbHelper, prefs, apiService)
+        val roomDb = BibleDatabase.getInstance(applicationContext)
+        val repository = BibleRepository(dbHelper, prefs, apiService, roomDb)
 
         viewModel = BibleViewModel(repository)
 
@@ -115,7 +119,8 @@ fun BibleApp(viewModel: BibleViewModel) {
         uiState.activeVerseForActions != null ||
         uiState.compareVerseNumber != null ||
         uiState.editingNote != null ||
-        uiState.reportingVerse != null
+        uiState.reportingVerse != null ||
+        uiState.updateCheckResult != null
 
     BackHandler(enabled = anyOverlayOpen) {
         if (drawerState.isOpen) {
@@ -138,6 +143,8 @@ fun BibleApp(viewModel: BibleViewModel) {
             showAboutDialog = false
         } else if (showNotesListDialog) {
             showNotesListDialog = false
+        } else if (uiState.updateCheckResult != null) {
+            viewModel.dismissUpdateDialog()
         } else if (uiState.activeVerseForActions != null) {
             viewModel.closeVerseActions()
         } else if (uiState.compareVerseNumber != null) {
@@ -324,6 +331,11 @@ fun BibleApp(viewModel: BibleViewModel) {
             zenMode = uiState.zenMode,
             continuousText = uiState.continuousText,
             hideVerseNumbers = uiState.hideVerseNumbers,
+            diffMode = uiState.diffMode,
+            comparisonLimit = uiState.comparisonLimit,
+            cachedVersesCount = uiState.cachedVersesCount,
+            isDownloadingOffline = uiState.isDownloadingBookOffline,
+            offlineDownloadProgress = uiState.offlineDownloadProgress,
             onTextSizeChanged = { viewModel.setTextSize(it) },
             onFontFamilyChanged = { viewModel.setFontFamily(it) },
             onThemeModeChanged = { viewModel.setThemeMode(it) },
@@ -332,6 +344,12 @@ fun BibleApp(viewModel: BibleViewModel) {
             onContinuousTextChanged = { viewModel.setContinuousText(it) },
             onHideVerseNumbersChanged = { viewModel.setHideVerseNumbers(it) },
             onLanguageChanged = { viewModel.setAppLanguage(it) },
+            onDiffModeChanged = { viewModel.setDiffMode(it) },
+            onComparisonLimitChanged = { viewModel.setComparisonLimit(it) },
+            onClearCache = { viewModel.clearOfflineCache() },
+            onDownloadBookOffline = { viewModel.downloadCurrentBookOffline() },
+            isCheckingUpdate = uiState.isCheckingUpdate,
+            onCheckForUpdates = { viewModel.checkForAppUpdates() },
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -339,7 +357,20 @@ fun BibleApp(viewModel: BibleViewModel) {
     if (showAboutDialog) {
         AboutDialog(
             currentLanguage = uiState.appLanguage,
+            onCheckForUpdates = {
+                showAboutDialog = false
+                viewModel.checkForAppUpdates()
+            },
             onDismiss = { showAboutDialog = false }
+        )
+    }
+
+    // App Update Dialog
+    uiState.updateCheckResult?.let { updateResult ->
+        AppUpdateDialog(
+            currentLanguage = uiState.appLanguage,
+            result = updateResult,
+            onDismiss = { viewModel.dismissUpdateDialog() }
         )
     }
 
@@ -352,7 +383,8 @@ fun BibleApp(viewModel: BibleViewModel) {
                 viewModel.navigateTo(note.bookId, note.chapterId, note.verseId)
             },
             onDeleteNote = { id -> viewModel.deleteNote(id) },
-            onExportXml = { "" },
+            onExportXml = { viewModel.exportNotesXml() },
+            onImportXml = { xml -> viewModel.importNotesXml(xml) },
             onDismiss = { showNotesListDialog = false }
         )
     }
@@ -384,8 +416,22 @@ fun BibleApp(viewModel: BibleViewModel) {
             baseTranslation = uiState.selectedTranslation,
             comparedVerses = uiState.comparedVerses,
             allTranslations = uiState.translations,
+            targetTranslations = uiState.comparisonTargetTranslations,
             showDifferences = uiState.showDifferences,
+            diffMode = uiState.diffMode,
+            isLoading = uiState.isComparingVerse,
             onToggleDifferences = { viewModel.toggleShowDifferences() },
+            onToggleDiffMode = {
+                viewModel.setDiffMode(if (uiState.diffMode == DiffMode.LOOSE) DiffMode.STRICT else DiffMode.LOOSE)
+            },
+            onPrevVerse = { viewModel.comparePreviousVerse() },
+            onNextVerse = { viewModel.compareNextVerse() },
+            onAddTranslation = { tid -> viewModel.addComparisonTranslation(tid) },
+            onRemoveTranslation = { tid -> viewModel.removeComparisonTranslation(tid) },
+            onSelectTranslation = { trans ->
+                viewModel.selectTranslation(trans)
+                viewModel.closeVerseComparison()
+            },
             onDismiss = { viewModel.closeVerseComparison() }
         )
     }

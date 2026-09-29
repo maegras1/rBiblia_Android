@@ -8,16 +8,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -33,7 +43,9 @@ import com.example.data.model.DarkVariant
 import com.example.data.model.TextFontFamily
 import com.example.data.model.TextSize
 import com.example.data.model.ThemeMode
+import com.example.ui.util.DiffMode
 import com.example.ui.util.Strings
+import com.example.util.AppUpdateManager
 
 @Composable
 fun SettingsDialog(
@@ -45,6 +57,11 @@ fun SettingsDialog(
     zenMode: Boolean,
     continuousText: Boolean,
     hideVerseNumbers: Boolean,
+    diffMode: DiffMode = DiffMode.LOOSE,
+    comparisonLimit: Int = 4,
+    cachedVersesCount: Int = 0,
+    isDownloadingOffline: Boolean = false,
+    offlineDownloadProgress: Pair<Int, Int>? = null,
     onTextSizeChanged: (TextSize) -> Unit,
     onFontFamilyChanged: (TextFontFamily) -> Unit,
     onThemeModeChanged: (ThemeMode) -> Unit,
@@ -53,6 +70,12 @@ fun SettingsDialog(
     onContinuousTextChanged: (Boolean) -> Unit,
     onHideVerseNumbersChanged: (Boolean) -> Unit,
     onLanguageChanged: (String) -> Unit,
+    onDiffModeChanged: (DiffMode) -> Unit = {},
+    onComparisonLimitChanged: (Int) -> Unit = {},
+    onClearCache: () -> Unit = {},
+    onDownloadBookOffline: () -> Unit = {},
+    isCheckingUpdate: Boolean = false,
+    onCheckForUpdates: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -273,6 +296,59 @@ fun SettingsDialog(
                     Divider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // --- Comparison Settings (Limit & Diff Mode) ---
+                    Text(
+                        text = Strings.get("chapter_comparison", currentLanguage),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Liczba porównywanych przekładów (2-6):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(2, 3, 4, 5, 6).forEach { limit ->
+                            FilterChip(
+                                selected = comparisonLimit == limit,
+                                onClick = { onComparisonLimitChanged(limit) },
+                                label = { Text(limit.toString()) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = Strings.get("diff_mode", currentLanguage),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        FilterChip(
+                            selected = diffMode == DiffMode.LOOSE,
+                            onClick = { onDiffModeChanged(DiffMode.LOOSE) },
+                            label = { Text(Strings.get("diff_mode_loose", currentLanguage)) }
+                        )
+                        FilterChip(
+                            selected = diffMode == DiffMode.STRICT,
+                            onClick = { onDiffModeChanged(DiffMode.STRICT) },
+                            label = { Text(Strings.get("diff_mode_strict", currentLanguage)) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     // --- App Language ---
                     Text(
                         text = Strings.get("language", currentLanguage),
@@ -299,6 +375,133 @@ fun SettingsDialog(
                             onClick = { onLanguageChanged("de") },
                             label = { Text("Deutsch (DE)") }
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- Offline Cache (Room Database) ---
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = Strings.get("offline_cache", currentLanguage),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "${Strings.get("cached_verses_count", currentLanguage)}: $cachedVersesCount",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (isDownloadingOffline && offlineDownloadProgress != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "${Strings.get("downloading_offline", currentLanguage)} (${offlineDownloadProgress.first}/${offlineDownloadProgress.second})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val progress = if (offlineDownloadProgress.second > 0) {
+                            offlineDownloadProgress.first.toFloat() / offlineDownloadProgress.second.toFloat()
+                        } else 0f
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = onDownloadBookOffline,
+                            enabled = !isDownloadingOffline,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = Strings.get("download_book_offline", currentLanguage),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onClearCache,
+                            modifier = Modifier.weight(0.8f)
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = Strings.get("clear_cache", currentLanguage),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- GitHub App Updates ---
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = Strings.get("check_updates", currentLanguage),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Wersja aplikacji: v${AppUpdateManager.CURRENT_VERSION} (GitHub: ${AppUpdateManager.GITHUB_REPO})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onCheckForUpdates,
+                        enabled = !isCheckingUpdate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(Strings.get("checking_updates", currentLanguage))
+                        } else {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(Strings.get("check_updates", currentLanguage))
+                        }
                     }
                 }
             }

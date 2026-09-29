@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Window
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
@@ -35,10 +36,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.util.Strings
+import com.example.util.AppUpdateManager
 
 @Composable
 fun AboutDialog(
     currentLanguage: String,
+    onCheckForUpdates: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -142,9 +145,22 @@ fun AboutDialog(
                     Text("Radio z Ewangelią")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
+                    onClick = onCheckForUpdates,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("check_updates_button")
+                ) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                    Text(Strings.get("check_updates", currentLanguage))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.End)
                 ) {
