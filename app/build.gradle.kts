@@ -9,12 +9,15 @@ android {
     namespace = "com.example"
     compileSdk = 36
 
+    val vCode = (project.findProperty("customVersionCode") as? String)?.toIntOrNull() ?: 2
+    val vName = (project.findProperty("customVersionName") as? String) ?: "1.0.1"
+
     defaultConfig {
         applicationId = "com.aistudio.rbiblia.wvxktz"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = vCode
+        versionName = vName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

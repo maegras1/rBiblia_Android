@@ -129,6 +129,13 @@ class BibleViewModel(
             }
         }
 
+        // Collect Room Database search history
+        viewModelScope.launch {
+            repository.getRecentSearchesFlow().collect { recent ->
+                _uiState.update { it.copy(recentSearches = recent) }
+            }
+        }
+
         loadInitialData()
     }
 
@@ -862,12 +869,12 @@ class BibleViewModel(
         _uiState.update { it.copy(searchScope = scope) }
     }
 
-    fun executeSearch() {
+    fun executeSearch(customQuery: String? = null) {
         val state = _uiState.value
-        val q = state.searchQuery.trim()
+        val q = (customQuery ?: state.searchQuery).trim()
         if (q.isBlank()) return
         val trans = state.selectedTranslation?.id ?: return
-        _uiState.update { it.copy(isSearching = true) }
+        _uiState.update { it.copy(searchQuery = q, isSearching = true) }
         viewModelScope.launch {
             try {
                 val results = repository.search(state.appLanguage, trans, q)
@@ -883,24 +890,28 @@ class BibleViewModel(
                     }
                 }
                 _uiState.update { it.copy(searchResults = filtered, isSearching = false) }
-                loadRecentSearches()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSearching = false, toastMessage = "Search error: ${e.message}") }
             }
         }
     }
 
-    private fun loadRecentSearches() {
+    fun deleteSearchItem(query: String) {
         viewModelScope.launch {
-            val recent = repository.getRecentSearches()
-            _uiState.update { it.copy(recentSearches = recent) }
+            repository.deleteRecentSearch(query)
+        }
+    }
+
+    fun loadRecentSearches() {
+        viewModelScope.launch {
+            val list = repository.getRecentSearches()
+            _uiState.update { it.copy(recentSearches = list) }
         }
     }
 
     fun clearSearchHistory() {
         viewModelScope.launch {
             repository.clearSearchHistory()
-            _uiState.update { it.copy(recentSearches = emptyList()) }
         }
     }
 

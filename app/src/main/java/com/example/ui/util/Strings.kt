@@ -13,6 +13,7 @@ object Strings {
         "copied" to "Skopiowano do schowka",
         "copy_report" to "Kopiuj zgłoszenie",
         "dark_variant" to "Wariant ciemnego motywu",
+        "delete" to "Usuń",
         "deuterocanonical" to "Księgi deuterokanoniczne",
         "edit_note" to "Edytuj notatkę",
         "error_type" to "Rodzaj błędu",
@@ -96,7 +97,8 @@ object Strings {
         "update_available" to "Nowa wersja dostępna!",
         "up_to_date" to "Posiadasz najnowszą wersję aplikacji",
         "download_update" to "Pobierz i zaktualizuj (APK)",
-        "release_notes" to "Lista zmian"
+        "release_notes" to "Lista zmian",
+        "comparison_count" to "Liczba porównywanych przekładów (2-6):"
     )
 
     private val en = mapOf(
@@ -111,6 +113,7 @@ object Strings {
         "copied" to "Copied to clipboard",
         "copy_report" to "Copy Report",
         "dark_variant" to "Dark Theme Style",
+        "delete" to "Delete",
         "deuterocanonical" to "Deuterocanonical",
         "edit_note" to "Edit Note",
         "error_type" to "Error Type",
@@ -194,7 +197,8 @@ object Strings {
         "update_available" to "New version available!",
         "up_to_date" to "You have the latest version",
         "download_update" to "Download & Install (APK)",
-        "release_notes" to "Release Notes"
+        "release_notes" to "Release Notes",
+        "comparison_count" to "Number of compared translations (2-6):"
     )
 
     private val de = mapOf(
@@ -209,6 +213,7 @@ object Strings {
         "copied" to "In die Zwischenablage kopiert",
         "copy_report" to "Bericht kopieren",
         "dark_variant" to "Dunkles Design",
+        "delete" to "Löschen",
         "deuterocanonical" to "Spätschriften",
         "edit_note" to "Notiz bearbeiten",
         "error_type" to "Fehlertyp",
@@ -292,7 +297,8 @@ object Strings {
         "update_available" to "Neue Version verfügbar!",
         "up_to_date" to "Sie verwenden die neueste Version",
         "download_update" to "Herunterladen und aktualisieren (APK)",
-        "release_notes" to "Änderungsprotokoll"
+        "release_notes" to "Änderungsprotokoll",
+        "comparison_count" to "Anzahl verglichener Übersetzungen (2-6):"
     )
 
     fun get(key: String, language: String): String {

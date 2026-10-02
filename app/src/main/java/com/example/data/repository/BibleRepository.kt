@@ -4,6 +4,7 @@ import com.example.data.local.DatabaseHelper
 import com.example.data.local.PreferencesManager
 import com.example.data.local.room.BibleDatabase
 import com.example.data.local.room.CachedVerseEntity
+import com.example.data.local.room.SearchHistoryEntity
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookInfo
 import com.example.data.model.ErrorReport
@@ -15,6 +16,7 @@ import com.example.data.remote.RBibliaApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 class BibleRepository(
@@ -137,19 +139,51 @@ class BibleRepository(
     }
 
     suspend fun search(language: String, translationId: String, query: String): List<SearchResult> {
-        dbHelper.addSearchQuery(query)
+        recordSearchQuery(query)
         val results = apiService.search(language, translationId, query)
         return results.map { sr ->
             sr.copy(bookName = BookCatalog.getBookName(sr.book, language))
         }
     }
 
-    suspend fun getRecentSearches(): List<String> {
-        return dbHelper.getRecentSearches()
+    fun getRecentSearchesFlow(): Flow<List<String>> {
+        return roomDb.searchHistoryDao().getRecentSearchesFlow().map { list ->
+            list.map { it.query }
+        }
     }
 
-    suspend fun clearSearchHistory() {
-        dbHelper.clearSearchHistory()
+    suspend fun getRecentSearches(): List<String> = withContext(Dispatchers.IO) {
+        val roomList = roomDb.searchHistoryDao().getRecentQueries()
+        if (roomList.isNotEmpty()) {
+            roomList
+        } else {
+            // Seed from legacy SQLite helper if present
+            val legacy = dbHelper.getRecentSearches()
+            for (q in legacy) {
+                recordSearchQuery(q)
+            }
+            legacy
+        }
+    }
+
+    suspend fun recordSearchQuery(query: String) = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.isNotBlank()) {
+            roomDb.searchHistoryDao().deleteByQuery(trimmed)
+            roomDb.searchHistoryDao().insertSearch(
+                SearchHistoryEntity(query = trimmed, timestamp = System.currentTimeMillis())
+            )
+            try { dbHelper.addSearchQuery(trimmed) } catch (_: Exception) {}
+        }
+    }
+
+    suspend fun deleteRecentSearch(query: String) = withContext(Dispatchers.IO) {
+        roomDb.searchHistoryDao().deleteByQuery(query.trim())
+    }
+
+    suspend fun clearSearchHistory() = withContext(Dispatchers.IO) {
+        roomDb.searchHistoryDao().clearHistory()
+        try { dbHelper.clearSearchHistory() } catch (_: Exception) {}
     }
 
     suspend fun saveNote(note: VerseNote): Long {

@@ -80,7 +80,7 @@ fun AboutDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "rBiblia v1.0.0",
+                    text = "rBiblia v${AppUpdateManager.CURRENT_VERSION}",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold

@@ -4,23 +4,40 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [CachedVerseEntity::class],
-    version = 1,
+    entities = [CachedVerseEntity::class, SearchHistoryEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class BibleDatabase : RoomDatabase() {
 
     abstract fun cachedVerseDao(): CachedVerseDao
+    abstract fun searchHistoryDao(): SearchHistoryDao
 
     companion object {
         @Volatile
         private var INSTANCE: BibleDatabase? = null
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `search_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `query` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_search_history_query` ON `search_history` (`query`)")
+            }
+        }
 
         fun getInstance(context: Context): BibleDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -29,6 +46,7 @@ abstract class BibleDatabase : RoomDatabase() {
                     BibleDatabase::class.java,
                     "rbiblia_room_cache.db"
                 )
+                    .addMigrations(MIGRATION_1_2)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

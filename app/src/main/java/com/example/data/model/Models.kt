@@ -40,7 +40,21 @@ data class SearchResult(
 enum class SearchScope(val label: String) {
     ALL("All"),
     OT("Old T."),
-    NT("New T.")
+    NT("New T.");
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> when (this) {
+            ALL -> "Cała Biblia"
+            OT -> "Stary Testament"
+            NT -> "Nowy Testament"
+        }
+        "de" -> when (this) {
+            ALL -> "Ganze Bibel"
+            OT -> "Altes Testament"
+            NT -> "Neues Testament"
+        }
+        else -> label
+    }
 }
 
 data class VerseNote(
@@ -71,22 +85,78 @@ enum class TextSize(val label: String, val scale: Float) {
     SMALL("Small", 0.85f),
     MEDIUM("Medium", 1.0f),
     LARGE("Large", 1.2f),
-    XLARGE("X-Large", 1.45f)
+    XLARGE("X-Large", 1.45f);
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> when (this) {
+            SMALL -> "Mały"
+            MEDIUM -> "Średni"
+            LARGE -> "Duży"
+            XLARGE -> "Bardzo duży"
+        }
+        "de" -> when (this) {
+            SMALL -> "Klein"
+            MEDIUM -> "Mittel"
+            LARGE -> "Groß"
+            XLARGE -> "Sehr groß"
+        }
+        else -> label
+    }
 }
 
 enum class TextFontFamily(val label: String) {
     SERIF("Serif"),
     SANS("Sans-Serif"),
-    MONO("Monospace")
+    MONO("Monospace");
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> when (this) {
+            SERIF -> "Szeryfowa"
+            SANS -> "Bezszeryfowa"
+            MONO -> "Stała szerokość (Mono)"
+        }
+        "de" -> when (this) {
+            SERIF -> "Serifenschrift"
+            SANS -> "Serifenlos"
+            MONO -> "Monospace"
+        }
+        else -> label
+    }
 }
 
 enum class ThemeMode(val label: String) {
     SYSTEM("System"),
     LIGHT("Light"),
-    DARK("Dark")
+    DARK("Dark");
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> when (this) {
+            SYSTEM -> "Systemowy"
+            LIGHT -> "Jasny"
+            DARK -> "Ciemny"
+        }
+        "de" -> when (this) {
+            SYSTEM -> "System"
+            LIGHT -> "Hell"
+            DARK -> "Dunkel"
+        }
+        else -> label
+    }
 }
 
 enum class DarkVariant(val label: String) {
     GOLD("Golden Dark"),
-    BLUE("Night Blue")
+    BLUE("Night Blue");
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> when (this) {
+            GOLD -> "Ciepły bursztyn"
+            BLUE -> "Nocny granat"
+        }
+        "de" -> when (this) {
+            GOLD -> "Goldener Bernstein"
+            BLUE -> "Nachtblau"
+        }
+        else -> label
+    }
 }

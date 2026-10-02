@@ -317,8 +317,9 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             isSearching = uiState.isSearching,
             onQueryChanged = { viewModel.onSearchQueryChanged(it) },
             onScopeChanged = { viewModel.onSearchScopeChanged(it) },
-            onExecuteSearch = { viewModel.executeSearch() },
+            onExecuteSearch = { query -> viewModel.executeSearch(query) },
             onClearHistory = { viewModel.clearSearchHistory() },
+            onDeleteSearchItem = { viewModel.deleteSearchItem(it) },
             onResultSelected = { result ->
                 showSearchDialog = false
                 viewModel.navigateTo(result.book, result.chapter, result.verse)
@@ -368,8 +369,6 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             onComparisonLimitChanged = { viewModel.setComparisonLimit(it) },
             onClearCache = { viewModel.clearOfflineCache() },
             onDownloadBookOffline = { viewModel.downloadCurrentBookOffline() },
-            isCheckingUpdate = uiState.isCheckingUpdate,
-            onCheckForUpdates = { viewModel.checkForAppUpdates() },
             onDismiss = { showSettingsDialog = false }
         )
     }

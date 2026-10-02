@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -58,8 +60,9 @@ fun SearchDialog(
     isSearching: Boolean,
     onQueryChanged: (String) -> Unit,
     onScopeChanged: (SearchScope) -> Unit,
-    onExecuteSearch: () -> Unit,
+    onExecuteSearch: (String?) -> Unit,
     onClearHistory: () -> Unit,
+    onDeleteSearchItem: (String) -> Unit = {},
     onResultSelected: (SearchResult) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -104,19 +107,25 @@ fun SearchDialog(
                     onValueChange = onQueryChanged,
                     placeholder = { Text(Strings.get("search_hint", currentLanguage)) },
                     leadingIcon = {
-                        IconButton(onClick = onExecuteSearch) {
+                        IconButton(
+                            onClick = { onExecuteSearch(null) },
+                            modifier = Modifier.testTag("execute_search_button")
+                        ) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChanged("") }) {
+                            IconButton(
+                                onClick = { onQueryChanged("") },
+                                modifier = Modifier.testTag("clear_search_input_button")
+                            ) {
                                 Icon(Icons.Default.Clear, contentDescription = "Clear")
                             }
                         }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onExecuteSearch() }),
+                    keyboardActions = KeyboardActions(onSearch = { onExecuteSearch(null) }),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -130,21 +139,14 @@ fun SearchDialog(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilterChip(
-                        selected = searchScope == SearchScope.ALL,
-                        onClick = { onScopeChanged(SearchScope.ALL) },
-                        label = { Text("All") }
-                    )
-                    FilterChip(
-                        selected = searchScope == SearchScope.OT,
-                        onClick = { onScopeChanged(SearchScope.OT) },
-                        label = { Text(Strings.get("old_testament", currentLanguage).take(6)) }
-                    )
-                    FilterChip(
-                        selected = searchScope == SearchScope.NT,
-                        onClick = { onScopeChanged(SearchScope.NT) },
-                        label = { Text(Strings.get("new_testament", currentLanguage).take(6)) }
-                    )
+                    SearchScope.values().forEach { scope ->
+                        FilterChip(
+                            selected = searchScope == scope,
+                            onClick = { onScopeChanged(scope) },
+                            label = { Text(scope.getLabel(currentLanguage)) },
+                            modifier = Modifier.testTag("search_scope_${scope.name.lowercase()}")
+                        )
+                    }
                 }
 
                 // Recent Searches
@@ -156,30 +158,62 @@ fun SearchDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                             Text(
                                 text = Strings.get("recent_searches", currentLanguage),
                                 style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.outline
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        TextButton(onClick = onClearHistory) {
+                        TextButton(
+                            onClick = onClearHistory,
+                            modifier = Modifier.testTag("clear_history_button")
+                        ) {
                             Text(Strings.get("clear_history", currentLanguage))
                         }
                     }
 
                     FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("recent_searches_flow")
                     ) {
                         recentSearches.forEach { q ->
-                            AssistChip(
+                            InputChip(
+                                selected = false,
                                 onClick = {
                                     onQueryChanged(q)
-                                    onExecuteSearch()
+                                    onExecuteSearch(q)
                                 },
-                                label = { Text(q) }
+                                label = { Text(q) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = Strings.get("delete", currentLanguage),
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .testTag("delete_recent_search_$q")
+                                            .clickable { onDeleteSearchItem(q) },
+                                        tint = MaterialTheme.colorScheme.outline
+                                    )
+                                },
+                                modifier = Modifier.testTag("recent_search_chip_$q")
                             )
                         }
                     }

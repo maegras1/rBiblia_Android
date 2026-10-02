@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -42,12 +43,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlin.math.abs
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -115,14 +123,28 @@ fun ReaderScreen(
     }
 
     var totalDrag by remember { mutableFloatStateOf(0f) }
+    var touchPosition by remember { mutableStateOf<Offset?>(null) }
+    val haptic = LocalHapticFeedback.current
+    var hasHapticTriggered by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                    onDragStart = { offset ->
+                        totalDrag = 0f
+                        touchPosition = offset
+                        hasHapticTriggered = false
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        totalDrag += dragAmount
+                        touchPosition = change.position
+                        if (!hasHapticTriggered && abs(totalDrag) >= 100f) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            hasHapticTriggered = true
+                        }
+                    },
                     onDragEnd = {
                         if (totalDrag < -100f) {
                             onNextChapter() // swipe left -> next chapter
@@ -130,6 +152,13 @@ fun ReaderScreen(
                             onPrevChapter() // swipe right -> prev chapter
                         }
                         totalDrag = 0f
+                        touchPosition = null
+                        hasHapticTriggered = false
+                    },
+                    onDragCancel = {
+                        totalDrag = 0f
+                        touchPosition = null
+                        hasHapticTriggered = false
                     }
                 )
             }
@@ -665,6 +694,59 @@ fun ReaderScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // --- Swipe Feedback Glow under finger ---
+        val currentTouch = touchPosition
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+
+        if (currentTouch != null && abs(totalDrag) > 10f) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val dragIntensity = (abs(totalDrag) / 160f).coerceIn(0f, 1f)
+                val glowRadius = 90.dp.toPx() * (0.85f + 0.35f * dragIntensity)
+                val glowAlpha = (0.22f + 0.28f * dragIntensity)
+
+                // Soft luminous radial glow under the finger
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            primaryColor.copy(alpha = glowAlpha),
+                            primaryContainer.copy(alpha = glowAlpha * 0.45f),
+                            Color.Transparent
+                        ),
+                        center = currentTouch,
+                        radius = glowRadius
+                    ),
+                    center = currentTouch,
+                    radius = glowRadius
+                )
+
+                // Directional edge highlight
+                if (totalDrag < -30f) {
+                    // Swiping left -> next chapter from right
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, primaryColor.copy(alpha = 0.18f * dragIntensity)),
+                            startX = size.width - 70.dp.toPx(),
+                            endX = size.width
+                        ),
+                        topLeft = Offset(size.width - 70.dp.toPx(), 0f),
+                        size = Size(70.dp.toPx(), size.height)
+                    )
+                } else if (totalDrag > 30f) {
+                    // Swiping right -> prev chapter from left
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(primaryColor.copy(alpha = 0.18f * dragIntensity), Color.Transparent),
+                            startX = 0f,
+                            endX = 70.dp.toPx()
+                        ),
+                        topLeft = Offset.Zero,
+                        size = Size(70.dp.toPx(), size.height)
+                    )
                 }
             }
         }

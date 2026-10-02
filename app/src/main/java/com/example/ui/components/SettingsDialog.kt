@@ -74,8 +74,6 @@ fun SettingsDialog(
     onComparisonLimitChanged: (Int) -> Unit = {},
     onClearCache: () -> Unit = {},
     onDownloadBookOffline: () -> Unit = {},
-    isCheckingUpdate: Boolean = false,
-    onCheckForUpdates: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -107,7 +105,7 @@ fun SettingsDialog(
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = Strings.get("cancel", currentLanguage))
                     }
                 }
 
@@ -134,7 +132,7 @@ fun SettingsDialog(
                             FilterChip(
                                 selected = textSize == size,
                                 onClick = { onTextSizeChanged(size) },
-                                label = { Text(size.label) }
+                                label = { Text(size.getLabel(currentLanguage)) }
                             )
                         }
                     }
@@ -158,7 +156,7 @@ fun SettingsDialog(
                             FilterChip(
                                 selected = fontFamily == ff,
                                 onClick = { onFontFamilyChanged(ff) },
-                                label = { Text(ff.label) }
+                                label = { Text(ff.getLabel(currentLanguage)) }
                             )
                         }
                     }
@@ -265,7 +263,7 @@ fun SettingsDialog(
                             FilterChip(
                                 selected = themeMode == mode,
                                 onClick = { onThemeModeChanged(mode) },
-                                label = { Text(mode.label) }
+                                label = { Text(mode.getLabel(currentLanguage)) }
                             )
                         }
                     }
@@ -287,7 +285,7 @@ fun SettingsDialog(
                             FilterChip(
                                 selected = darkVariant == variant,
                                 onClick = { onDarkVariantChanged(variant) },
-                                label = { Text(variant.label) }
+                                label = { Text(variant.getLabel(currentLanguage)) }
                             )
                         }
                     }
@@ -304,7 +302,7 @@ fun SettingsDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Liczba porównywanych przekładów (2-6):",
+                        text = Strings.get("comparison_count", currentLanguage),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -451,56 +449,6 @@ fun SettingsDialog(
                                 text = Strings.get("clear_cache", currentLanguage),
                                 style = MaterialTheme.typography.bodySmall
                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // --- GitHub App Updates ---
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = Strings.get("check_updates", currentLanguage),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Wersja aplikacji: v${AppUpdateManager.CURRENT_VERSION} (GitHub: ${AppUpdateManager.GITHUB_REPO})",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = onCheckForUpdates,
-                        enabled = !isCheckingUpdate,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isCheckingUpdate) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(Strings.get("checking_updates", currentLanguage))
-                        } else {
-                            Icon(Icons.Default.SystemUpdate, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(Strings.get("check_updates", currentLanguage))
                         }
                     }
                 }
