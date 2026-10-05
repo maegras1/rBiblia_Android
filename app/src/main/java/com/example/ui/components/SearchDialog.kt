@@ -37,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -215,6 +216,115 @@ fun SearchDialog(
                                 },
                                 modifier = Modifier.testTag("recent_search_chip_$q")
                             )
+                        }
+                    }
+                }
+
+                // Matching Recent Searches while typing
+                val matchingRecent = remember(searchQuery, recentSearches) {
+                    if (searchQuery.isNotBlank() && searchResults.isEmpty() && !isSearching) {
+                        recentSearches.filter { it.contains(searchQuery, ignoreCase = true) }
+                    } else {
+                        emptyList()
+                    }
+                }
+
+                if (matchingRecent.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = Strings.get("recent_searches", currentLanguage),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        matchingRecent.forEach { q ->
+                            InputChip(
+                                selected = false,
+                                onClick = {
+                                    onQueryChanged(q)
+                                    onExecuteSearch(q)
+                                },
+                                label = { Text(q) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = Strings.get("delete", currentLanguage),
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .testTag("delete_recent_search_$q")
+                                            .clickable { onDeleteSearchItem(q) },
+                                        tint = MaterialTheme.colorScheme.outline
+                                    )
+                                },
+                                modifier = Modifier.testTag("matching_recent_search_$q")
+                            )
+                        }
+                    }
+                }
+
+                // Empty History & Suggestions when search is empty and history is empty
+                if (searchQuery.isEmpty() && recentSearches.isEmpty()) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = Strings.get("no_search_history", currentLanguage),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = Strings.get("suggested_searches", currentLanguage),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val suggestions = when (currentLanguage) {
+                            "pl" -> listOf("miłość", "wiara", "pokój", "nadzieja", "łaska", "światłość")
+                            "de" -> listOf("Liebe", "Glaube", "Frieden", "Hoffnung", "Gnade", "Licht")
+                            else -> listOf("love", "faith", "peace", "hope", "grace", "light")
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            suggestions.forEach { suggestion ->
+                                AssistChip(
+                                    onClick = {
+                                        onQueryChanged(suggestion)
+                                        onExecuteSearch(suggestion)
+                                    },
+                                    label = { Text(suggestion) },
+                                    modifier = Modifier.testTag("suggested_search_$suggestion")
+                                )
+                            }
                         }
                     }
                 }

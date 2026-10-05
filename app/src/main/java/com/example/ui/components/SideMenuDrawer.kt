@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VerticalSplit
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -45,7 +45,7 @@ fun SideMenuDrawer(
     onSelectTranslations: () -> Unit,
     onSelectNotes: () -> Unit,
     onSelectSearch: () -> Unit,
-    onSelectChapterComparison: () -> Unit,
+    onSelectChapterComparison: () -> Unit = {},
     onSelectSettings: () -> Unit,
     onSelectAbout: () -> Unit,
     onCloseDrawer: () -> Unit
@@ -81,7 +81,7 @@ fun SideMenuDrawer(
                 )
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             SideMenuItem(
                 icon = Icons.Default.Book,
@@ -114,16 +114,6 @@ fun SideMenuDrawer(
             )
 
             SideMenuItem(
-                icon = Icons.Default.Compare,
-                title = Strings.get("chapter_comparison", currentLanguage),
-                testTag = "drawer_item_comparison",
-                onClick = {
-                    onCloseDrawer()
-                    onSelectChapterComparison()
-                }
-            )
-
-            SideMenuItem(
                 icon = Icons.Default.VerticalSplit,
                 title = Strings.get("parallel_reading", currentLanguage),
                 testTag = "drawer_item_parallel_reading",
@@ -133,7 +123,7 @@ fun SideMenuDrawer(
                 }
             )
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             SideMenuItem(
                 icon = Icons.Default.Settings,

@@ -26,9 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -94,6 +97,9 @@ fun ReaderScreen(
     onToggleParallelLayout: () -> Unit = {},
     onToggleParallelDifferences: () -> Unit = {},
     onCloseParallelReading: () -> Unit = {},
+    onOpenBookSelector: () -> Unit = {},
+    onOpenNotes: () -> Unit = {},
+    onToggleParallelReading: () -> Unit = {},
     textSize: TextSize,
     fontFamily: TextFontFamily,
     continuousText: Boolean,
@@ -662,10 +668,11 @@ fun ReaderScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // 1. Previous Chapter
                             IconButton(
                                 onClick = onPrevChapter,
                                 modifier = Modifier.testTag("prev_chapter_button")
@@ -676,13 +683,61 @@ fun ReaderScreen(
                                 )
                             }
 
-                            Text(
-                                text = "${book.sigla} $chapter",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            // 2. Notes Button (Web mobile view)
+                            IconButton(
+                                onClick = onOpenNotes,
+                                modifier = Modifier.testTag("bottom_nav_notes_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.EditNote,
+                                    contentDescription = Strings.get("notes", currentLanguage),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
+                            // 3. Central Book & Chapter Selector
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                                modifier = Modifier
+                                    .testTag("bottom_book_chapter_selector")
+                                    .clickable { onOpenBookSelector() }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = "${book.sigla} $chapter",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = Strings.get("select_book", currentLanguage),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // 4. Parallel Reading / Comparison Button (Web mobile view)
+                            IconButton(
+                                onClick = onToggleParallelReading,
+                                modifier = Modifier.testTag("bottom_nav_parallel_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VerticalSplit,
+                                    contentDescription = Strings.get("parallel_reading", currentLanguage),
+                                    tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // 5. Next Chapter
                             IconButton(
                                 onClick = onNextChapter,
                                 modifier = Modifier.testTag("next_chapter_button")

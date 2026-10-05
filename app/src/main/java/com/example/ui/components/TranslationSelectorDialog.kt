@@ -59,18 +59,27 @@ fun TranslationSelectorDialog(
     var searchQuery by remember { mutableStateOf("") }
     var showOnlyFavorites by remember { mutableStateOf(false) }
 
-    val filtered = remember(translations, searchQuery, showOnlyFavorites, selectedLangFilter) {
+    val filtered = remember(translations, searchQuery, showOnlyFavorites, selectedLangFilter, currentLanguage) {
         val query = searchQuery.trim().lowercase()
-        translations.filter { t ->
-            val matchesLang = selectedLangFilter.isEmpty() || t.language.equals(selectedLangFilter, ignoreCase = true)
-            val matchesFav = !showOnlyFavorites || t.isFavorite
-            val matchesQuery = query.isEmpty() ||
-                t.name.lowercase().contains(query) ||
-                t.id.lowercase().contains(query) ||
-                t.description.lowercase().contains(query)
-            matchesLang && matchesFav && matchesQuery
-        }
+        translations
+            .filter { t ->
+                val matchesLang = selectedLangFilter.isEmpty() || t.language.equals(selectedLangFilter, ignoreCase = true)
+                val matchesFav = !showOnlyFavorites || t.isFavorite
+                val matchesQuery = query.isEmpty() ||
+                    t.name.lowercase().contains(query) ||
+                    t.id.lowercase().contains(query) ||
+                    t.description.lowercase().contains(query)
+                matchesLang && matchesFav && matchesQuery
+            }
+            .sortedWith(
+                compareByDescending<Translation> { it.isFavorite }
+                    .thenByDescending { it.language.equals(currentLanguage, ignoreCase = true) }
+                    .thenBy { it.name }
+            )
     }
+
+    val favoritesList = remember(filtered) { filtered.filter { it.isFavorite } }
+    val othersList = remember(filtered) { filtered.filter { !it.isFavorite } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -177,86 +186,155 @@ fun TranslationSelectorDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    items(filtered, key = { it.id }) { translation ->
-                        val isSelected = translation.id == selectedTranslation?.id
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                }
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("translation_item_${translation.id}")
-                                .clickable {
-                                    onSelectTranslation(translation)
-                                }
-                        ) {
+                    if (favoritesList.isNotEmpty() && !showOnlyFavorites && searchQuery.isEmpty()) {
+                        item(key = "header_favorites") {
                             Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(vertical = 4.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                            modifier = Modifier.padding(end = 6.dp)
-                                        ) {
-                                            Text(
-                                                text = translation.language.uppercase(),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = translation.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (translation.description.isNotBlank()) {
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = translation.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (translation.date.isNotBlank()) {
-                                        Text(
-                                            text = translation.date,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
-                                    }
-                                }
-
-                                IconButton(
-                                    onClick = { onToggleFavorite(translation.id) },
-                                    modifier = Modifier.testTag("fav_button_${translation.id}")
-                                ) {
-                                    Icon(
-                                        imageVector = if (translation.isFavorite) Icons.Default.Star else Icons.Outlined.StarOutline,
-                                        contentDescription = "Favorite",
-                                        tint = if (translation.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = Strings.get("favorites", currentLanguage),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
+                        }
+
+                        items(favoritesList, key = { "fav_${it.id}" }) { translation ->
+                            TranslationItemCard(
+                                translation = translation,
+                                isSelected = translation.id == selectedTranslation?.id,
+                                onSelectTranslation = onSelectTranslation,
+                                onToggleFavorite = onToggleFavorite
+                            )
+                        }
+
+                        if (othersList.isNotEmpty()) {
+                            item(key = "header_all") {
+                                Text(
+                                    text = Strings.get("all_translations", currentLanguage),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                                )
+                            }
+
+                            items(othersList, key = { it.id }) { translation ->
+                                TranslationItemCard(
+                                    translation = translation,
+                                    isSelected = translation.id == selectedTranslation?.id,
+                                    onSelectTranslation = onSelectTranslation,
+                                    onToggleFavorite = onToggleFavorite
+                                )
+                            }
+                        }
+                    } else {
+                        items(filtered, key = { it.id }) { translation ->
+                            TranslationItemCard(
+                                translation = translation,
+                                isSelected = translation.id == selectedTranslation?.id,
+                                onSelectTranslation = onSelectTranslation,
+                                onToggleFavorite = onToggleFavorite
+                            )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranslationItemCard(
+    translation: Translation,
+    isSelected: Boolean,
+    onSelectTranslation: (Translation) -> Unit,
+    onToggleFavorite: (String) -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("translation_item_${translation.id}")
+            .clickable {
+                onSelectTranslation(translation)
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Text(
+                            text = translation.language.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                    Text(
+                        text = translation.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (translation.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = translation.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (translation.date.isNotBlank()) {
+                    Text(
+                        text = translation.date,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = { onToggleFavorite(translation.id) },
+                modifier = Modifier.testTag("fav_button_${translation.id}")
+            ) {
+                Icon(
+                    imageVector = if (translation.isFavorite) Icons.Default.Star else Icons.Outlined.StarOutline,
+                    contentDescription = "Favorite",
+                    tint = if (translation.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                )
             }
         }
     }

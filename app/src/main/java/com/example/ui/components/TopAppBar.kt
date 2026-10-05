@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,22 +32,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.BookInfo
 import com.example.data.model.Translation
+import com.example.ui.util.Strings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BibleTopAppBar(
+    currentLanguage: String = "pl",
     selectedBook: BookInfo,
     selectedChapter: Int,
     selectedTranslation: Translation?,
     isParallelReading: Boolean = false,
     parallelTranslation: Translation? = null,
-    onOpenBookSelector: () -> Unit,
-    onOpenChapterSelector: () -> Unit,
-    onOpenTranslationSelector: () -> Unit,
+    onOpenBookSelector: () -> Unit = {},
+    onOpenChapterSelector: () -> Unit = {},
+    onOpenTranslationSelector: () -> Unit = {},
     onOpenParallelTranslationSelector: () -> Unit = {},
-    onToggleParallelReading: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
-    onOpenChapterComparison: () -> Unit = {},
+    onToggleParallelReading: () -> Unit = {},
     onOpenMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -62,82 +64,88 @@ fun BibleTopAppBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Book & Chapter Pill
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .testTag("book_chapter_selector_button")
-                        .clickable { onOpenBookSelector() }
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                if (!isParallelReading) {
+                    // Primary Translation Pill with FULL NAME
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("translation_selector_button")
+                            .clickable { onOpenTranslationSelector() }
                     ) {
-                        Text(
-                            text = "${selectedBook.sigla} $selectedChapter",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select Book or Chapter",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = selectedTranslation?.name ?: "Uwspółcześniona Biblia Gdańska",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Select Translation",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                }
-
-                // Primary Translation Pill with FULL NAME
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isParallelReading) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .testTag("translation_selector_button")
-                        .clickable { onOpenTranslationSelector() }
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                } else {
+                    // Primary Translation Pill (Parallel mode)
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("translation_selector_button")
+                            .clickable { onOpenTranslationSelector() }
                     ) {
-                        Text(
-                            text = selectedTranslation?.name ?: "Uwspółcześniona Biblia Gdańska",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select Translation",
-                            tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = selectedTranslation?.name ?: "Uwspółcześniona Biblia Gdańska",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Select Translation",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
-                }
 
-                // If in Parallel Mode: Secondary Translation Pill with FULL NAME
-                if (isParallelReading) {
                     Text(
                         text = "‖",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline
                     )
+
+                    // Secondary Translation Pill (Parallel mode)
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            .weight(1f)
                             .testTag("parallel_translation_selector_button")
                             .clickable { onOpenParallelTranslationSelector() }
                     ) {
@@ -170,13 +178,13 @@ fun BibleTopAppBar(
         },
         actions = {
             IconButton(
-                onClick = onToggleParallelReading,
-                modifier = Modifier.testTag("toggle_parallel_button")
+                onClick = onOpenSearch,
+                modifier = Modifier.testTag("top_search_button")
             ) {
                 Icon(
-                    imageVector = Icons.Default.VerticalSplit,
-                    contentDescription = "Toggle Parallel Reading",
-                    tint = if (isParallelReading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    imageVector = Icons.Default.Search,
+                    contentDescription = Strings.get("search", currentLanguage),
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
             IconButton(
