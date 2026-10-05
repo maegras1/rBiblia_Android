@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -78,7 +80,8 @@ fun NotesListDialog(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -104,10 +107,10 @@ fun NotesListDialog(
                     }
                 }
 
-                // Action Buttons (Export & Import XML)
+                // Action Buttons (Export & Import XML) with balanced equal size
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
@@ -115,11 +118,15 @@ fun NotesListDialog(
                             val xml = onExportXml()
                             clipboardManager.setText(AnnotatedString(xml))
                             showExportSuccess = true
-                        }
+                        },
+                        modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(Strings.get("export_notes_xml", currentLanguage))
+                        Text(
+                            text = Strings.get("export_notes_xml", currentLanguage),
+                            maxLines = 1
+                        )
                     }
 
                     OutlinedButton(
@@ -127,11 +134,15 @@ fun NotesListDialog(
                             val clip = clipboardManager.getText()?.text ?: ""
                             importText = if (clip.contains("<notes>")) clip else ""
                             showImportDialog = true
-                        }
+                        },
+                        modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(Strings.get("import_notes_xml", currentLanguage))
+                        Text(
+                            text = Strings.get("import_notes_xml", currentLanguage),
+                            maxLines = 1
+                        )
                     }
                 }
 
@@ -162,6 +173,7 @@ fun NotesListDialog(
                     }
                 } else {
                     LazyColumn(
+                        contentPadding = PaddingValues(bottom = 32.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.weight(1f)
                     ) {

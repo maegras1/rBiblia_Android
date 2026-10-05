@@ -45,3 +45,19 @@ val DarkBlueOutline = Color(0xFF64748B)
 val DiffAddedColor = Color(0x3322C55E)
 val DiffRemovedColor = Color(0x33EF4444)
 val HighlightNoteColor = Color(0x40F59E0B)
+
+data class HighlightColorOption(
+    val id: String,
+    val name: String,
+    val hex: String,
+    val color: Color
+)
+
+val HighlightColors = listOf(
+    HighlightColorOption("yellow", "Żółty", "#FFF59D", Color(0xFFFFF59D)),
+    HighlightColorOption("green", "Zielony", "#C8E6C9", Color(0xFFC8E6C9)),
+    HighlightColorOption("blue", "Niebieski", "#BBDEFB", Color(0xFFBBDEFB)),
+    HighlightColorOption("pink", "Różowy", "#F8BBD0", Color(0xFFF8BBD0)),
+    HighlightColorOption("orange", "Pomarańczowy", "#FFE0B2", Color(0xFFFFE0B2)),
+    HighlightColorOption("purple", "Fioletowy", "#E1BEE7", Color(0xFFE1BEE7))
+)

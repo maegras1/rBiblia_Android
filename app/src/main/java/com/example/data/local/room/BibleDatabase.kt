@@ -11,14 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [CachedVerseEntity::class, SearchHistoryEntity::class],
-    version = 2,
+    entities = [CachedVerseEntity::class, SearchHistoryEntity::class, VerseHighlightEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class BibleDatabase : RoomDatabase() {
 
     abstract fun cachedVerseDao(): CachedVerseDao
     abstract fun searchHistoryDao(): SearchHistoryDao
+    abstract fun verseHighlightDao(): VerseHighlightDao
 
     companion object {
         @Volatile
@@ -39,6 +40,28 @@ abstract class BibleDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `verse_highlights` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `bookId` TEXT NOT NULL,
+                        `chapter` INTEGER NOT NULL,
+                        `verseNumber` INTEGER NOT NULL,
+                        `colorHex` TEXT NOT NULL,
+                        `colorName` TEXT NOT NULL,
+                        `translationId` TEXT,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_verse_highlights_bookId_chapter_verseNumber` ON `verse_highlights` (`bookId`, `chapter`, `verseNumber`)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): BibleDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -46,7 +69,7 @@ abstract class BibleDatabase : RoomDatabase() {
                     BibleDatabase::class.java,
                     "rbiblia_room_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

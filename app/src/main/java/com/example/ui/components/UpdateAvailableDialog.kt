@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,7 +57,8 @@ fun UpdateAvailableDialog(
             tonalElevation = 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
                 .testTag("update_available_dialog")
         ) {
             Column(
@@ -216,6 +218,8 @@ fun UpdateAvailableDialog(
                         Text("Przypomnij później", fontSize = 12.sp)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

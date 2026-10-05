@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,7 +52,8 @@ fun AppUpdateDialog(
             tonalElevation = 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -209,6 +211,7 @@ fun AppUpdateDialog(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

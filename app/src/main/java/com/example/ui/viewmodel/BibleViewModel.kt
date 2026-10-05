@@ -51,6 +51,7 @@ data class BibleUiState(
     val continuousText: Boolean = false,
     val hideVerseNumbers: Boolean = false,
     val highlightedVerse: Int? = null,
+    val verseHighlights: Map<Int, String> = emptyMap(),
     val activeVerseForActions: Verse? = null,
     val compareVerseNumber: Int? = null,
     val comparedVerses: Map<String, String> = emptyMap(),
@@ -259,8 +260,21 @@ class BibleViewModel(
         }
     }
 
+    private var highlightsJob: kotlinx.coroutines.Job? = null
+
+    private fun observeVerseHighlights(bookId: String, chapter: Int) {
+        highlightsJob?.cancel()
+        highlightsJob = viewModelScope.launch {
+            repository.getVerseHighlightsFlow(bookId, chapter).collect { list ->
+                val map = list.associate { it.verseNumber to it.colorHex }
+                _uiState.update { it.copy(verseHighlights = map) }
+            }
+        }
+    }
+
     fun loadVerses() {
         val state = _uiState.value
+        observeVerseHighlights(state.selectedBook.id, state.selectedChapter)
         val trans = state.selectedTranslation ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -460,6 +474,31 @@ class BibleViewModel(
 
     fun closeVerseActions() {
         _uiState.update { it.copy(activeVerseForActions = null) }
+    }
+
+    fun setVerseHighlight(verseNumber: Int, colorHex: String, colorName: String = "yellow") {
+        val state = _uiState.value
+        viewModelScope.launch {
+            repository.saveVerseHighlight(
+                bookId = state.selectedBook.id,
+                chapter = state.selectedChapter,
+                verseNumber = verseNumber,
+                colorHex = colorHex,
+                colorName = colorName,
+                translationId = state.selectedTranslation?.id
+            )
+        }
+    }
+
+    fun removeVerseHighlight(verseNumber: Int) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            repository.removeVerseHighlight(
+                bookId = state.selectedBook.id,
+                chapter = state.selectedChapter,
+                verseNumber = verseNumber
+            )
+        }
     }
 
     fun openVerseComparison(verse: Verse) {

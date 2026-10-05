@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -67,7 +68,8 @@ fun ErrorReportDialog(
             tonalElevation = 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -187,10 +189,10 @@ fun ErrorReportDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Buttons
+                // Buttons with equal balanced size
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
@@ -198,9 +200,10 @@ fun ErrorReportDialog(
                             val text = "Report: ${book.sigla} $chapter:${verse.number} (${translation?.id})\nOriginal: ${verse.text}\nSuggested: $content\nBy: $name ($email)\nNotes: $notes"
                             clipboardManager.setText(AnnotatedString(text))
                             onDismiss()
-                        }
+                        },
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(Strings.get("copy_report", currentLanguage))
+                        Text(Strings.get("copy_report", currentLanguage), maxLines = 1)
                     }
 
                     Button(
@@ -208,15 +211,18 @@ fun ErrorReportDialog(
                             onSubmit(name, email, notes, content, errorType)
                         },
                         enabled = name.isNotBlank() && email.isNotBlank() && content.isNotBlank() && !isSubmitting,
-                        modifier = Modifier.testTag("submit_report_button")
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("submit_report_button")
                     ) {
                         if (isSubmitting) {
                             CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                         } else {
-                            Text(Strings.get("submit_report", currentLanguage))
+                            Text(Strings.get("submit_report", currentLanguage), maxLines = 1)
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

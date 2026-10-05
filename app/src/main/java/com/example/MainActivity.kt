@@ -234,6 +234,7 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
                 hideVerseNumbers = uiState.hideVerseNumbers,
                 zenMode = uiState.zenMode,
                 highlightedVerse = uiState.highlightedVerse,
+                verseHighlights = uiState.verseHighlights,
                 onVerseClick = { verse -> viewModel.openVerseActions(verse) },
                 onNextChapter = { viewModel.nextChapter() },
                 onPrevChapter = { viewModel.prevChapter() },
@@ -353,6 +354,8 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             onComparisonLimitChanged = { viewModel.setComparisonLimit(it) },
             onClearCache = { viewModel.clearOfflineCache() },
             onDownloadBookOffline = { viewModel.downloadCurrentBookOffline() },
+            onExportNotesXml = { viewModel.exportNotesXml() },
+            onImportNotesXml = { viewModel.importNotesXml(it) },
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -408,6 +411,9 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             book = uiState.selectedBook,
             chapter = uiState.selectedChapter,
             verse = verse,
+            currentHighlightColorHex = uiState.verseHighlights[verse.number],
+            onSetHighlight = { hex, name -> viewModel.setVerseHighlight(verse.number, hex, name) },
+            onRemoveHighlight = { viewModel.removeVerseHighlight(verse.number) },
             onAddNote = { viewModel.startEditingNote(verse) },
             onCompare = {
                 viewModel.closeVerseActions()

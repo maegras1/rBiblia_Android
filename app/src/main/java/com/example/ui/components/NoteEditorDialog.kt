@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -52,7 +53,10 @@ fun NoteEditorDialog(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -125,26 +129,30 @@ fun NoteEditorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action buttons
+                // Action buttons with equal size
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.testTag("cancel_note_button")
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("cancel_note_button")
                     ) {
                         Text(Strings.get("cancel", currentLanguage))
                     }
-                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                     Button(
                         onClick = { onSave(content.trim(), isGlobal) },
                         enabled = content.isNotBlank(),
-                        modifier = Modifier.testTag("save_note_button")
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("save_note_button")
                     ) {
                         Text(Strings.get("save_note", currentLanguage))
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

@@ -5,6 +5,7 @@ import com.example.data.local.PreferencesManager
 import com.example.data.local.room.BibleDatabase
 import com.example.data.local.room.CachedVerseEntity
 import com.example.data.local.room.SearchHistoryEntity
+import com.example.data.local.room.VerseHighlightEntity
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookInfo
 import com.example.data.model.ErrorReport
@@ -284,5 +285,47 @@ class BibleRepository(
                 delay(40)
             }
         }
+    }
+
+    // --- Verse Highlights (Room Database) ---
+
+    fun getVerseHighlightsFlow(bookId: String, chapter: Int): Flow<List<VerseHighlightEntity>> {
+        return roomDb.verseHighlightDao().getHighlightsForChapterFlow(bookId, chapter)
+    }
+
+    suspend fun getVerseHighlights(bookId: String, chapter: Int): List<VerseHighlightEntity> = withContext(Dispatchers.IO) {
+        roomDb.verseHighlightDao().getHighlightsForChapter(bookId, chapter)
+    }
+
+    suspend fun saveVerseHighlight(
+        bookId: String,
+        chapter: Int,
+        verseNumber: Int,
+        colorHex: String,
+        colorName: String = "yellow",
+        translationId: String? = null
+    ) = withContext(Dispatchers.IO) {
+        val entity = VerseHighlightEntity(
+            bookId = bookId,
+            chapter = chapter,
+            verseNumber = verseNumber,
+            colorHex = colorHex,
+            colorName = colorName,
+            translationId = translationId,
+            timestamp = System.currentTimeMillis()
+        )
+        roomDb.verseHighlightDao().setHighlight(entity)
+    }
+
+    suspend fun removeVerseHighlight(
+        bookId: String,
+        chapter: Int,
+        verseNumber: Int
+    ) = withContext(Dispatchers.IO) {
+        roomDb.verseHighlightDao().removeHighlight(bookId, chapter, verseNumber)
+    }
+
+    suspend fun clearAllHighlights() = withContext(Dispatchers.IO) {
+        roomDb.verseHighlightDao().clearAll()
     }
 }

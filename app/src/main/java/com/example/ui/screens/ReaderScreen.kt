@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -106,6 +107,7 @@ fun ReaderScreen(
     hideVerseNumbers: Boolean,
     zenMode: Boolean,
     highlightedVerse: Int?,
+    verseHighlights: Map<Int, String> = emptyMap(),
     onVerseClick: (Verse) -> Unit,
     onNextChapter: () -> Unit,
     onPrevChapter: () -> Unit,
@@ -369,15 +371,23 @@ fun ReaderScreen(
                             val v2 = parallelMap[verseNum]
                             val isHighlighted = verseNum == highlightedVerse
                             val hasNote = v1?.hasNote == true || v2?.hasNote == true
+                            val persistentHex = verseHighlights[verseNum]
+                            val customHighlightColor = persistentHex?.let {
+                                runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+                            }
 
                             Card(
                                 colors = CardDefaults.cardColors(
                                     containerColor = when {
                                         isHighlighted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                        customHighlightColor != null -> customHighlightColor.copy(alpha = 0.28f)
                                         hasNote -> HighlightNoteColor
                                         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                                     }
                                 ),
+                                border = if (customHighlightColor != null) {
+                                    BorderStroke(1.5.dp, customHighlightColor.copy(alpha = 0.75f))
+                                } else null,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -545,6 +555,10 @@ fun ReaderScreen(
                     // Continuous Text Mode
                     val continuousString = buildAnnotatedString {
                         for (v in verses) {
+                            val persistentHex = verseHighlights[v.number]
+                            val customHighlightColor = persistentHex?.let {
+                                runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+                            }
                             if (!hideVerseNumbers) {
                                 withStyle(
                                     SpanStyle(
@@ -559,7 +573,8 @@ fun ReaderScreen(
                             withStyle(
                                 SpanStyle(
                                     color = MaterialTheme.colorScheme.onBackground,
-                                    fontSize = baseFontSize
+                                    fontSize = baseFontSize,
+                                    background = customHighlightColor?.copy(alpha = 0.32f) ?: Color.Transparent
                                 )
                             ) {
                                 append("${v.text} ")
@@ -595,14 +610,22 @@ fun ReaderScreen(
                     ) {
                         items(verses, key = { it.number }) { verse ->
                             val isHighlighted = verse.number == highlightedVerse
+                            val persistentHex = verseHighlights[verse.number]
+                            val customHighlightColor = persistentHex?.let {
+                                runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+                            }
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = when {
                                     isHighlighted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    customHighlightColor != null -> customHighlightColor.copy(alpha = 0.28f)
                                     verse.hasNote -> HighlightNoteColor
                                     else -> Color.Transparent
                                 },
+                                border = if (customHighlightColor != null) {
+                                    BorderStroke(1.dp, customHighlightColor.copy(alpha = 0.65f))
+                                } else null,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("verse_item_${verse.number}")
