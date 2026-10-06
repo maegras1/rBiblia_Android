@@ -9,8 +9,22 @@ android {
     namespace = "com.example"
     compileSdk = 36
 
-    val vCode = (project.findProperty("customVersionCode") as? String)?.toIntOrNull() ?: 2
-    val vName = (project.findProperty("customVersionName") as? String) ?: "1.0.1"
+    fun parseVersionCode(name: String): Int {
+        return try {
+            val parts = name.trim().removePrefix("v").removePrefix("V").split(".")
+            val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
+            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            val patch = parts.getOrNull(2)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
+            val calculated = major * 10000 + minor * 100 + patch
+            if (calculated > 0) calculated else 10002
+        } catch (_: Exception) {
+            10002
+        }
+    }
+
+    val customVCode = (project.findProperty("customVersionCode") as? String)?.toIntOrNull()
+    val vName = (project.findProperty("customVersionName") as? String) ?: "1.0.2"
+    val vCode = customVCode ?: parseVersionCode(vName)
 
     defaultConfig {
         applicationId = "com.aistudio.rbiblia.wvxktz"
@@ -28,12 +42,15 @@ android {
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

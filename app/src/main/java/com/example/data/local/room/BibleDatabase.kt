@@ -11,8 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [CachedVerseEntity::class, SearchHistoryEntity::class, VerseHighlightEntity::class],
-    version = 3,
+    entities = [
+        CachedVerseEntity::class,
+        SearchHistoryEntity::class,
+        VerseHighlightEntity::class,
+        ReadingHistoryEntity::class,
+        BookReadingProgressEntity::class,
+        ChapterReadingProgressEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class BibleDatabase : RoomDatabase() {
@@ -20,6 +27,8 @@ abstract class BibleDatabase : RoomDatabase() {
     abstract fun cachedVerseDao(): CachedVerseDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun verseHighlightDao(): VerseHighlightDao
+    abstract fun readingHistoryDao(): ReadingHistoryDao
+    abstract fun readingProgressDao(): ReadingProgressDao
 
     companion object {
         @Volatile
@@ -62,6 +71,62 @@ abstract class BibleDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Reading history table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `reading_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `bookId` TEXT NOT NULL,
+                        `bookName` TEXT NOT NULL,
+                        `chapter` INTEGER NOT NULL,
+                        `verseNumber` INTEGER NOT NULL,
+                        `translationId` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_reading_history_bookId_chapter` ON `reading_history` (`bookId`, `chapter`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_reading_history_timestamp` ON `reading_history` (`timestamp`)")
+
+                // Book reading progress table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `book_reading_progress` (
+                        `bookId` TEXT NOT NULL PRIMARY KEY,
+                        `totalChapters` INTEGER NOT NULL,
+                        `lastReadChapter` INTEGER NOT NULL,
+                        `lastReadVerse` INTEGER NOT NULL,
+                        `completedChaptersCsv` TEXT NOT NULL,
+                        `completedChaptersCount` INTEGER NOT NULL,
+                        `percentCompleted` REAL NOT NULL,
+                        `lastTranslationId` TEXT NOT NULL,
+                        `lastReadTimestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                // Chapter reading progress table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `chapter_reading_progress` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `bookId` TEXT NOT NULL,
+                        `chapter` INTEGER NOT NULL,
+                        `isCompleted` INTEGER NOT NULL,
+                        `lastVerseRead` INTEGER NOT NULL,
+                        `readCount` INTEGER NOT NULL,
+                        `lastTranslationId` TEXT NOT NULL,
+                        `lastReadTimestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_chapter_reading_progress_bookId_chapter` ON `chapter_reading_progress` (`bookId`, `chapter`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_chapter_reading_progress_lastReadTimestamp` ON `chapter_reading_progress` (`lastReadTimestamp`)")
+            }
+        }
+
         fun getInstance(context: Context): BibleDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -69,7 +134,7 @@ abstract class BibleDatabase : RoomDatabase() {
                     BibleDatabase::class.java,
                     "rbiblia_room_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

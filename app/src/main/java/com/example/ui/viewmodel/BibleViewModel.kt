@@ -2,6 +2,9 @@ package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.room.BookReadingProgressEntity
+import com.example.data.local.room.ChapterReadingProgressEntity
+import com.example.data.local.room.ReadingHistoryEntity
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookInfo
 import com.example.data.model.DarkVariant
@@ -77,7 +80,12 @@ data class BibleUiState(
     val isDownloadingBookOffline: Boolean = false,
     val offlineDownloadProgress: Pair<Int, Int>? = null,
     val isCheckingUpdate: Boolean = false,
-    val updateCheckResult: UpdateCheckResult? = null
+    val updateCheckResult: UpdateCheckResult? = null,
+    val readingHistory: List<ReadingHistoryEntity> = emptyList(),
+    val latestReadingSession: ReadingHistoryEntity? = null,
+    val allBooksProgress: Map<String, BookReadingProgressEntity> = emptyMap(),
+    val currentBookChaptersProgress: Map<Int, ChapterReadingProgressEntity> = emptyMap(),
+    val showReadingHistoryDialog: Boolean = false
 )
 
 class BibleViewModel(
@@ -134,6 +142,28 @@ class BibleViewModel(
         viewModelScope.launch {
             repository.getRecentSearchesFlow().collect { recent ->
                 _uiState.update { it.copy(recentSearches = recent) }
+            }
+        }
+
+        // Collect Room Database reading history
+        viewModelScope.launch {
+            repository.getReadingHistoryFlow(50).collect { history ->
+                _uiState.update { it.copy(readingHistory = history) }
+            }
+        }
+
+        // Collect latest reading session
+        viewModelScope.launch {
+            repository.getLatestReadingSessionFlow().collect { latest ->
+                _uiState.update { it.copy(latestReadingSession = latest) }
+            }
+        }
+
+        // Collect all books reading progress
+        viewModelScope.launch {
+            repository.getAllBookProgressFlow().collect { list ->
+                val map = list.associateBy { it.bookId }
+                _uiState.update { it.copy(allBooksProgress = map) }
             }
         }
 
@@ -261,6 +291,7 @@ class BibleViewModel(
     }
 
     private var highlightsJob: kotlinx.coroutines.Job? = null
+    private var chaptersProgressJob: kotlinx.coroutines.Job? = null
 
     private fun observeVerseHighlights(bookId: String, chapter: Int) {
         highlightsJob?.cancel()
@@ -272,10 +303,31 @@ class BibleViewModel(
         }
     }
 
+    private fun observeBookProgress(bookId: String) {
+        chaptersProgressJob?.cancel()
+        chaptersProgressJob = viewModelScope.launch {
+            repository.getChaptersProgressForBookFlow(bookId).collect { list ->
+                val map = list.associateBy { it.chapter }
+                _uiState.update { it.copy(currentBookChaptersProgress = map) }
+            }
+        }
+    }
+
     fun loadVerses() {
         val state = _uiState.value
         observeVerseHighlights(state.selectedBook.id, state.selectedChapter)
+        observeBookProgress(state.selectedBook.id)
         val trans = state.selectedTranslation ?: return
+        viewModelScope.launch {
+            // Record reading session & progress in Room Database
+            repository.recordReadingSession(
+                bookId = state.selectedBook.id,
+                bookName = state.selectedBook.name,
+                chapter = state.selectedChapter,
+                verseNumber = 1,
+                translationId = trans.id
+            )
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
@@ -499,6 +551,54 @@ class BibleViewModel(
                 verseNumber = verseNumber
             )
         }
+    }
+
+    fun toggleChapterCompleted(bookId: String = _uiState.value.selectedBook.id, chapter: Int = _uiState.value.selectedChapter) {
+        viewModelScope.launch {
+            val isCurrentCompleted = _uiState.value.currentBookChaptersProgress[chapter]?.isCompleted ?: false
+            val newCompleted = !isCurrentCompleted
+            repository.setChapterCompleted(
+                bookId = bookId,
+                chapter = chapter,
+                isCompleted = newCompleted,
+                translationId = _uiState.value.selectedTranslation?.id ?: ""
+            )
+            val msg = if (newCompleted) "Rozdział $chapter oznaczony jako przeczytany" else "Cofnięto oznaczenie przeczytania"
+            _uiState.update { it.copy(toastMessage = msg) }
+        }
+    }
+
+    fun openReadingHistory() {
+        _uiState.update { it.copy(showReadingHistoryDialog = true) }
+    }
+
+    fun closeReadingHistory() {
+        _uiState.update { it.copy(showReadingHistoryDialog = false) }
+    }
+
+    fun clearReadingHistory() {
+        viewModelScope.launch {
+            repository.clearReadingHistory()
+            _uiState.update { it.copy(toastMessage = "Wyczyszczono historię czytania") }
+        }
+    }
+
+    fun deleteReadingHistoryEntry(id: Long) {
+        viewModelScope.launch {
+            repository.deleteReadingHistoryEntry(id)
+        }
+    }
+
+    fun clearAllReadingProgress() {
+        viewModelScope.launch {
+            repository.clearReadingProgress()
+            _uiState.update { it.copy(toastMessage = "Zresetowano postępy czytania") }
+        }
+    }
+
+    fun resumeLastReadingSession() {
+        val last = _uiState.value.latestReadingSession ?: return
+        navigateTo(last.bookId, last.chapter, last.verseNumber)
     }
 
     fun openVerseComparison(verse: Verse) {

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,8 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.local.room.ChapterReadingProgressEntity
 import com.example.data.model.BookInfo
 import com.example.ui.util.Strings
 
@@ -43,6 +46,7 @@ fun ChapterSelectorDialog(
     book: BookInfo,
     availableChapters: List<Int>,
     currentChapter: Int,
+    chaptersProgress: Map<Int, ChapterReadingProgressEntity> = emptyMap(),
     onChapterSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -99,12 +103,17 @@ fun ChapterSelectorDialog(
                 ) {
                     items(availableChapters) { ch ->
                         val isSelected = ch == currentChapter
+                        val progress = chaptersProgress[ch]
+                        val isCompleted = progress?.isCompleted == true
+                        val wasRead = (progress?.readCount ?: 0) > 0
+
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                containerColor = when {
+                                    isSelected -> MaterialTheme.colorScheme.primary
+                                    isCompleted -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                                    wasRead -> MaterialTheme.colorScheme.surfaceVariant
+                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                                 }
                             ),
                             shape = RoundedCornerShape(12.dp),
@@ -126,10 +135,24 @@ fun ChapterSelectorDialog(
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) {
                                         MaterialTheme.colorScheme.onPrimary
+                                    } else if (isCompleted) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
                                     } else {
                                         MaterialTheme.colorScheme.onSurface
                                     }
                                 )
+
+                                if (isCompleted) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Completed",
+                                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(14.dp)
+                                    )
+                                }
                             }
                         }
                     }

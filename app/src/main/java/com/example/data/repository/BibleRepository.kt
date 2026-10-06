@@ -3,7 +3,10 @@ package com.example.data.repository
 import com.example.data.local.DatabaseHelper
 import com.example.data.local.PreferencesManager
 import com.example.data.local.room.BibleDatabase
+import com.example.data.local.room.BookReadingProgressEntity
 import com.example.data.local.room.CachedVerseEntity
+import com.example.data.local.room.ChapterReadingProgressEntity
+import com.example.data.local.room.ReadingHistoryEntity
 import com.example.data.local.room.SearchHistoryEntity
 import com.example.data.local.room.VerseHighlightEntity
 import com.example.data.model.BookCatalog
@@ -327,5 +330,151 @@ class BibleRepository(
 
     suspend fun clearAllHighlights() = withContext(Dispatchers.IO) {
         roomDb.verseHighlightDao().clearAll()
+    }
+
+    // --- Reading History (Room Database) ---
+
+    fun getReadingHistoryFlow(limit: Int = 50): Flow<List<ReadingHistoryEntity>> {
+        return roomDb.readingHistoryDao().getRecentHistory(limit)
+    }
+
+    fun getLatestReadingSessionFlow(): Flow<ReadingHistoryEntity?> {
+        return roomDb.readingHistoryDao().getLatestEntry()
+    }
+
+    suspend fun recordReadingSession(
+        bookId: String,
+        bookName: String,
+        chapter: Int,
+        verseNumber: Int = 1,
+        translationId: String
+    ) = withContext(Dispatchers.IO) {
+        val entry = ReadingHistoryEntity(
+            bookId = bookId,
+            bookName = bookName,
+            chapter = chapter,
+            verseNumber = verseNumber,
+            translationId = translationId,
+            timestamp = System.currentTimeMillis()
+        )
+        roomDb.readingHistoryDao().insert(entry)
+
+        // Also update chapter progress and book progress
+        updateProgressOnRead(bookId, chapter, verseNumber, translationId)
+    }
+
+    suspend fun clearReadingHistory() = withContext(Dispatchers.IO) {
+        roomDb.readingHistoryDao().clearHistory()
+    }
+
+    suspend fun deleteReadingHistoryEntry(id: Long) = withContext(Dispatchers.IO) {
+        roomDb.readingHistoryDao().deleteEntry(id)
+    }
+
+    // --- Reading Progress per Book & Chapter (Room Database) ---
+
+    fun getAllBookProgressFlow(): Flow<List<BookReadingProgressEntity>> {
+        return roomDb.readingProgressDao().getAllBookProgressFlow()
+    }
+
+    fun getBookProgressFlow(bookId: String): Flow<BookReadingProgressEntity?> {
+        return roomDb.readingProgressDao().getBookProgressFlow(bookId)
+    }
+
+    fun getChapterProgressFlow(bookId: String, chapter: Int): Flow<ChapterReadingProgressEntity?> {
+        return roomDb.readingProgressDao().getChapterProgressFlow(bookId, chapter)
+    }
+
+    fun getChaptersProgressForBookFlow(bookId: String): Flow<List<ChapterReadingProgressEntity>> {
+        return roomDb.readingProgressDao().getChaptersProgressForBookFlow(bookId)
+    }
+
+    private suspend fun updateProgressOnRead(
+        bookId: String,
+        chapter: Int,
+        verseNumber: Int,
+        translationId: String
+    ) {
+        val now = System.currentTimeMillis()
+        val existingChapter = roomDb.readingProgressDao().getChapterProgressDirect(bookId, chapter)
+        val readCount = (existingChapter?.readCount ?: 0) + 1
+        val chapterEntity = ChapterReadingProgressEntity(
+            id = existingChapter?.id ?: 0,
+            bookId = bookId,
+            chapter = chapter,
+            isCompleted = existingChapter?.isCompleted ?: false,
+            lastVerseRead = verseNumber,
+            readCount = readCount,
+            lastTranslationId = translationId,
+            lastReadTimestamp = now
+        )
+        roomDb.readingProgressDao().upsertChapterProgress(chapterEntity)
+
+        // Update book progress
+        val totalChapters = BookCatalog.getBook(bookId, "pl").chapterCount
+        val chaptersProgress = roomDb.readingProgressDao().getChaptersProgressForBookDirect(bookId)
+        val completedSet = chaptersProgress.filter { it.isCompleted }.map { it.chapter }.toSet()
+        val completedCsv = completedSet.sorted().joinToString(",")
+        val percent = if (totalChapters > 0) (completedSet.size.toFloat() / totalChapters.toFloat()) * 100f else 0f
+
+        val bookEntity = BookReadingProgressEntity(
+            bookId = bookId,
+            totalChapters = totalChapters,
+            lastReadChapter = chapter,
+            lastReadVerse = verseNumber,
+            completedChaptersCsv = completedCsv,
+            completedChaptersCount = completedSet.size,
+            percentCompleted = percent,
+            lastTranslationId = translationId,
+            lastReadTimestamp = now
+        )
+        roomDb.readingProgressDao().upsertBookProgress(bookEntity)
+    }
+
+    suspend fun setChapterCompleted(
+        bookId: String,
+        chapter: Int,
+        isCompleted: Boolean,
+        translationId: String = ""
+    ) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val existingChapter = roomDb.readingProgressDao().getChapterProgressDirect(bookId, chapter)
+        val chapterEntity = ChapterReadingProgressEntity(
+            id = existingChapter?.id ?: 0,
+            bookId = bookId,
+            chapter = chapter,
+            isCompleted = isCompleted,
+            lastVerseRead = existingChapter?.lastVerseRead ?: 1,
+            readCount = maxOf(1, existingChapter?.readCount ?: 1),
+            lastTranslationId = translationId.ifBlank { existingChapter?.lastTranslationId ?: "" },
+            lastReadTimestamp = now
+        )
+        roomDb.readingProgressDao().upsertChapterProgress(chapterEntity)
+
+        // Update book progress
+        val totalChapters = BookCatalog.getBook(bookId, "pl").chapterCount
+        val chaptersProgress = roomDb.readingProgressDao().getChaptersProgressForBookDirect(bookId)
+        val completedSet = chaptersProgress.filter { it.isCompleted }.map { it.chapter }.toSet()
+        val completedCsv = completedSet.sorted().joinToString(",")
+        val percent = if (totalChapters > 0) (completedSet.size.toFloat() / totalChapters.toFloat()) * 100f else 0f
+
+        val existingBook = roomDb.readingProgressDao().getBookProgressDirect(bookId)
+        val bookEntity = BookReadingProgressEntity(
+            bookId = bookId,
+            totalChapters = totalChapters,
+            lastReadChapter = existingBook?.lastReadChapter ?: chapter,
+            lastReadVerse = existingBook?.lastReadVerse ?: 1,
+            completedChaptersCsv = completedCsv,
+            completedChaptersCount = completedSet.size,
+            percentCompleted = percent,
+            lastTranslationId = translationId.ifBlank { existingBook?.lastTranslationId ?: "" },
+            lastReadTimestamp = now
+        )
+        roomDb.readingProgressDao().upsertBookProgress(bookEntity)
+    }
+
+    suspend fun clearReadingProgress() = withContext(Dispatchers.IO) {
+        roomDb.readingProgressDao().clearBookProgress()
+        roomDb.readingProgressDao().clearChapterProgress()
     }
 }
