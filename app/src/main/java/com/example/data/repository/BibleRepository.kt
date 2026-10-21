@@ -4,8 +4,11 @@ import com.example.data.local.DatabaseHelper
 import com.example.data.local.PreferencesManager
 import com.example.data.local.room.BibleDatabase
 import com.example.data.local.room.BookReadingProgressEntity
+import com.example.data.local.room.CachedTranslationEntity
 import com.example.data.local.room.CachedVerseEntity
 import com.example.data.local.room.ChapterReadingProgressEntity
+import com.example.data.local.room.FavoriteTranslationEntity
+import com.example.data.local.room.NoteEntity
 import com.example.data.local.room.ReadingHistoryEntity
 import com.example.data.local.room.SearchHistoryEntity
 import com.example.data.local.room.VerseHighlightEntity
@@ -18,33 +21,129 @@ import com.example.data.model.Verse
 import com.example.data.model.VerseNote
 import com.example.data.remote.RBibliaApiService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class BibleRepository(
-    private val dbHelper: DatabaseHelper,
+    private val dbHelper: DatabaseHelper? = null,
     val preferences: PreferencesManager,
     private val apiService: RBibliaApiService,
     val roomDb: BibleDatabase
 ) {
-    suspend fun getTranslations(language: String): List<Translation> {
-        val favorites = dbHelper.getFavorites()
-        var list = apiService.getTranslations(language)
-        if (list.isNotEmpty()) {
-            dbHelper.saveCachedTranslations(list)
-        } else {
-            val cached = dbHelper.getCachedTranslations(language)
-            if (cached.isNotEmpty()) {
-                list = cached
+    private val migrationMutex = Mutex()
+
+    /**
+     * One-time idempotent migration of user data (notes, favorites, cached translations,
+     * recent searches) from legacy SQLiteOpenHelper (DatabaseHelper) into unified Room database.
+     */
+    suspend fun ensureLegacyMigrated() = withContext(Dispatchers.IO) {
+        if (preferences.legacyDbMigrated) return@withContext
+        migrationMutex.withLock {
+            if (preferences.legacyDbMigrated) return@withLock
+            try {
+                // Ensure default favorites exist in Room
+                val translationDao = roomDb.translationDao()
+                if (translationDao.getFavoritesCount() == 0) {
+                    val now = System.currentTimeMillis()
+                    translationDao.insertFavorites(
+                        listOf(
+                            FavoriteTranslationEntity("pl_ubg", now),
+                            FavoriteTranslationEntity("pl_bt5", now),
+                            FavoriteTranslationEntity("pl_bw", now),
+                            FavoriteTranslationEntity("en_kjv", now)
+                        )
+                    )
+                }
+
+                if (dbHelper != null) {
+                    // 1. Migrate legacy favorites
+                    val legacyFavs = try { dbHelper.getFavorites() } catch (_: Exception) { emptySet() }
+                    if (legacyFavs.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        translationDao.insertFavorites(
+                            legacyFavs.map { FavoriteTranslationEntity(it, now) }
+                        )
+                    }
+
+                    // 2. Migrate legacy cached translations
+                    val legacyTrans = try { dbHelper.getCachedTranslations(null) } catch (_: Exception) { emptyList() }
+                    if (legacyTrans.isNotEmpty()) {
+                        translationDao.insertCachedTranslations(
+                            legacyTrans.map { CachedTranslationEntity.fromDomain(it) }
+                        )
+                    }
+
+                    // 3. Migrate legacy notes if Room notes table is empty
+                    val noteDao = roomDb.noteDao()
+                    if (noteDao.getCount() == 0) {
+                        val legacyNotes = try { dbHelper.getAllNotes() } catch (_: Exception) { emptyList() }
+                        if (legacyNotes.isNotEmpty()) {
+                            noteDao.insertNotes(
+                                legacyNotes.map { NoteEntity.fromDomain(it).copy(id = 0) }
+                            )
+                        }
+                    }
+
+                    // 4. Migrate legacy recent searches if Room search history is empty
+                    val searchDao = roomDb.searchHistoryDao()
+                    if (searchDao.getCount() == 0) {
+                        val legacySearches = try { dbHelper.getRecentSearches() } catch (_: Exception) { emptyList() }
+                        for (q in legacySearches) {
+                            if (q.isNotBlank()) {
+                                searchDao.insertSearch(
+                                    SearchHistoryEntity(query = q.trim(), timestamp = System.currentTimeMillis())
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                preferences.legacyDbMigrated = true
             }
         }
-        return list.map { it.copy(isFavorite = favorites.contains(it.id)) }
     }
 
-    suspend fun toggleFavorite(translationId: String, isFav: Boolean) {
-        dbHelper.toggleFavorite(translationId, isFav)
+    suspend fun getTranslations(language: String): List<Translation> = withContext(Dispatchers.IO) {
+        ensureLegacyMigrated()
+        val translationDao = roomDb.translationDao()
+        var favIds = translationDao.getFavoriteIds().toSet()
+        if (favIds.isEmpty()) {
+            val defaults = listOf("pl_ubg", "pl_bt5", "pl_bw", "en_kjv")
+            val now = System.currentTimeMillis()
+            translationDao.insertFavorites(defaults.map { FavoriteTranslationEntity(it, now) })
+            favIds = defaults.toSet()
+        }
+
+        var list = apiService.getTranslations(language)
+        if (list.isNotEmpty()) {
+            translationDao.insertCachedTranslations(
+                list.map { CachedTranslationEntity.fromDomain(it) }
+            )
+        } else {
+            val cached = translationDao.getCachedTranslationsByLanguage(language)
+            if (cached.isNotEmpty()) {
+                list = cached.map { it.toDomain() }
+            }
+        }
+        list.map { it.copy(isFavorite = favIds.contains(it.id)) }
+    }
+
+    suspend fun toggleFavorite(translationId: String, isFav: Boolean) = withContext(Dispatchers.IO) {
+        ensureLegacyMigrated()
+        val translationDao = roomDb.translationDao()
+        if (isFav) {
+            translationDao.insertFavorite(FavoriteTranslationEntity(translationId))
+        } else {
+            translationDao.deleteFavorite(translationId)
+        }
     }
 
     suspend fun getTranslationStructure(language: String, translationId: String): Map<String, List<Int>> {
@@ -64,7 +163,8 @@ class BibleRepository(
         bookId: String,
         chapterId: Int
     ): List<Verse> = withContext(Dispatchers.IO) {
-        // 1. Check local Room database cache first for instant rendering & offline mode
+        ensureLegacyMigrated()
+        // 1. Check unified Room database cache first for instant rendering & offline mode
         val roomCached = try {
             roomDb.cachedVerseDao().getChapterVerses(translationId, bookId, chapterId)
         } catch (e: Exception) {
@@ -74,11 +174,10 @@ class BibleRepository(
         val finalMap: Map<Int, String> = if (roomCached.isNotEmpty()) {
             roomCached.associate { it.verseNumber to it.text }
         } else {
-            // Check legacy SQLite cache as secondary fallback
-            val legacyCached = dbHelper.getCachedVerses(translationId, bookId, chapterId)
-            if (legacyCached.isNotEmpty()) {
-                // Populate into Room database for future instant access
-                val entities = legacyCached.map { (num, text) ->
+            // 2. Fetch from API and persist into Room (triggers automatically update FTS4 index)
+            val remote = apiService.getVerses(language, translationId, bookId, chapterId)
+            if (remote.isNotEmpty()) {
+                val entities = remote.map { (num, text) ->
                     CachedVerseEntity(translationId, bookId, chapterId, num, text)
                 }
                 try {
@@ -86,30 +185,27 @@ class BibleRepository(
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                legacyCached
+                remote
             } else {
-                // 2. Fetch from API
-                val remote = apiService.getVerses(language, translationId, bookId, chapterId)
-                if (remote.isNotEmpty()) {
-                    // Cache in Room Database
-                    val entities = remote.map { (num, text) ->
+                // One-time legacy fallback if a chapter was only in old SQLite helper
+                val legacyCached = try {
+                    dbHelper?.getCachedVerses(translationId, bookId, chapterId) ?: emptyMap()
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+                if (legacyCached.isNotEmpty()) {
+                    val entities = legacyCached.map { (num, text) ->
                         CachedVerseEntity(translationId, bookId, chapterId, num, text)
                     }
                     try {
                         roomDb.cachedVerseDao().insertVerses(entities)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                    dbHelper.saveCachedVerses(translationId, bookId, chapterId, remote)
-                    remote
-                } else {
-                    // Fallback
-                    dbHelper.getCachedVerses(translationId, bookId, chapterId)
+                    } catch (_: Exception) {}
                 }
+                legacyCached
             }
         }
 
-        val notes = dbHelper.getNotesForChapter(bookId, chapterId, translationId)
+        val notes = getNotesForChapter(bookId, chapterId, translationId)
         val notesVerseIds = notes.map { it.verseId }.toSet()
 
         finalMap.entries
@@ -129,24 +225,124 @@ class BibleRepository(
         bookId: String,
         chapterId: Int,
         verseId: Int
-    ): Map<String, String> {
-        val result = mutableMapOf<String, String>()
-        for (tid in translationIds) {
-            val verses = getVerses(language, tid, bookId, chapterId)
-            val verse = verses.find { it.number == verseId }
-            if (verse != null && verse.text.isNotBlank()) {
-                result[tid] = verse.text
+    ): Map<String, String> = coroutineScope {
+        val deferreds = translationIds.map { tid ->
+            async(Dispatchers.IO) {
+                val verses = getVerses(language, tid, bookId, chapterId)
+                val verse = verses.find { it.number == verseId }
+                if (verse != null && verse.text.isNotBlank()) {
+                    tid to verse.text
+                } else {
+                    null
+                }
             }
-            delay(60)
         }
-        return result
+        deferreds.mapNotNull { it.await() }.toMap()
     }
 
-    suspend fun search(language: String, translationId: String, query: String): List<SearchResult> {
-        recordSearchQuery(query)
-        val results = apiService.search(language, translationId, query)
-        return results.map { sr ->
-            sr.copy(bookName = BookCatalog.getBookName(sr.book, language))
+    /**
+     * Converts a raw user search query into a safe SQLite FTS4 MATCH expression with prefix tokens.
+     */
+    private fun buildFtsQuery(rawQuery: String): String {
+        val tokens = rawQuery
+            .trim()
+            .split(Regex("\\s+"))
+            .map { token ->
+                // Keep letters and digits (including Polish/German diacritics)
+                token.replace(Regex("[^\\p{L}\\p{N}]"), "")
+            }
+            .filter { it.length >= 2 }
+
+        if (tokens.isEmpty()) return ""
+        return tokens.joinToString(" ") { "$it*" }
+    }
+
+    /**
+     * Hybrid Full-Text Search (FTS4 local offline search + remote API search).
+     * Searches local Room FTS4 index in milliseconds (with LIKE fallback for mid-word substrings)
+     * and merges with remote API results when online.
+     */
+    suspend fun search(language: String, translationId: String, query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return@withContext emptyList()
+        recordSearchQuery(trimmed)
+
+        coroutineScope {
+            val localDeferred = async(Dispatchers.IO) {
+                searchLocalFts(language, translationId, trimmed)
+            }
+            val remoteDeferred = async(Dispatchers.IO) {
+                try {
+                    apiService.search(language, translationId, trimmed)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+
+            val localResults = localDeferred.await()
+            val remoteResults = remoteDeferred.await()
+
+            val bookOrderMap = BookCatalog.getAllBooks(language)
+                .mapIndexed { index, bookInfo -> bookInfo.id to index }
+                .toMap()
+
+            val merged = LinkedHashMap<String, SearchResult>()
+            for (r in remoteResults) {
+                val key = "${r.book}_${r.chapter}_${r.verse}"
+                merged[key] = r.copy(bookName = BookCatalog.getBookName(r.book, language))
+            }
+            for (l in localResults) {
+                val key = "${l.book}_${l.chapter}_${l.verse}"
+                if (!merged.containsKey(key)) {
+                    merged[key] = l.copy(bookName = BookCatalog.getBookName(l.book, language))
+                }
+            }
+
+            merged.values.sortedWith(
+                compareBy<SearchResult>(
+                    { bookOrderMap[it.book] ?: Int.MAX_VALUE },
+                    { it.chapter },
+                    { it.verse }
+                )
+            )
+        }
+    }
+
+    suspend fun searchLocalFts(
+        language: String,
+        translationId: String,
+        query: String
+    ): List<SearchResult> = withContext(Dispatchers.IO) {
+        val dao = roomDb.cachedVerseDao()
+        val ftsQuery = buildFtsQuery(query)
+        val ftsMatches = if (ftsQuery.isNotEmpty()) {
+            try {
+                dao.searchVersesFts(translationId, ftsQuery, limit = 250)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+
+        val finalEntities = if (ftsMatches.isNotEmpty()) {
+            ftsMatches
+        } else {
+            try {
+                dao.searchVersesLike(translationId, query.trim(), limit = 250)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+        finalEntities.map { entity ->
+            SearchResult(
+                book = entity.bookId,
+                chapter = entity.chapterId,
+                verse = entity.verseNumber,
+                content = entity.text,
+                bookName = BookCatalog.getBookName(entity.bookId, language)
+            )
         }
     }
 
@@ -157,17 +353,8 @@ class BibleRepository(
     }
 
     suspend fun getRecentSearches(): List<String> = withContext(Dispatchers.IO) {
-        val roomList = roomDb.searchHistoryDao().getRecentQueries()
-        if (roomList.isNotEmpty()) {
-            roomList
-        } else {
-            // Seed from legacy SQLite helper if present
-            val legacy = dbHelper.getRecentSearches()
-            for (q in legacy) {
-                recordSearchQuery(q)
-            }
-            legacy
-        }
+        ensureLegacyMigrated()
+        roomDb.searchHistoryDao().getRecentQueries()
     }
 
     suspend fun recordSearchQuery(query: String) = withContext(Dispatchers.IO) {
@@ -177,7 +364,6 @@ class BibleRepository(
             roomDb.searchHistoryDao().insertSearch(
                 SearchHistoryEntity(query = trimmed, timestamp = System.currentTimeMillis())
             )
-            try { dbHelper.addSearchQuery(trimmed) } catch (_: Exception) {}
         }
     }
 
@@ -187,27 +373,64 @@ class BibleRepository(
 
     suspend fun clearSearchHistory() = withContext(Dispatchers.IO) {
         roomDb.searchHistoryDao().clearHistory()
-        try { dbHelper.clearSearchHistory() } catch (_: Exception) {}
     }
 
-    suspend fun saveNote(note: VerseNote): Long {
-        return dbHelper.saveNote(note)
+    // --- Notes (Unified Room Database) ---
+
+    fun getAllNotesFlow(): Flow<List<VerseNote>> {
+        return roomDb.noteDao().getAllNotesFlow().map { list ->
+            list.map { it.toDomain() }
+        }
     }
 
-    suspend fun deleteNote(noteId: Long) {
-        dbHelper.deleteNote(noteId)
+    suspend fun saveNote(note: VerseNote): Long = withContext(Dispatchers.IO) {
+        ensureLegacyMigrated()
+        val entity = NoteEntity.fromDomain(note.copy(timestamp = System.currentTimeMillis()))
+        roomDb.noteDao().insertNote(entity)
     }
 
-    suspend fun getNotesForChapter(bookId: String, chapterId: Int, translationId: String): List<VerseNote> {
-        return dbHelper.getNotesForChapter(bookId, chapterId, translationId)
+    suspend fun deleteNote(noteId: Long) = withContext(Dispatchers.IO) {
+        ensureLegacyMigrated()
+        roomDb.noteDao().deleteNoteById(noteId)
     }
 
-    suspend fun getAllNotes(): List<VerseNote> {
-        return dbHelper.getAllNotes()
+    suspend fun getNotesForChapter(bookId: String, chapterId: Int, translationId: String): List<VerseNote> =
+        withContext(Dispatchers.IO) {
+            ensureLegacyMigrated()
+            roomDb.noteDao().getNotesForChapter(bookId, chapterId, translationId).map { it.toDomain() }
+        }
+
+    suspend fun getAllNotes(): List<VerseNote> = withContext(Dispatchers.IO) {
+        ensureLegacyMigrated()
+        roomDb.noteDao().getAllNotes().map { it.toDomain() }
     }
 
-    suspend fun exportNotesXml(): String {
-        return dbHelper.exportNotesToXml()
+    suspend fun exportNotesXml(): String = withContext(Dispatchers.IO) {
+        val notes = getAllNotes()
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        sb.append("<rbiblia_notes version=\"1.0\">\n")
+        for (n in notes) {
+            sb.append("  <note>\n")
+            sb.append("    <book>${escapeXml(n.bookId)}</book>\n")
+            sb.append("    <chapter>${n.chapterId}</chapter>\n")
+            sb.append("    <verse>${n.verseId}</verse>\n")
+            sb.append("    <translation>${escapeXml(n.translationId ?: "")}</translation>\n")
+            sb.append("    <is_global>${n.isGlobal}</is_global>\n")
+            sb.append("    <timestamp>${n.timestamp}</timestamp>\n")
+            sb.append("    <content>${escapeXml(n.content)}</content>\n")
+            sb.append("  </note>\n")
+        }
+        sb.append("</rbiblia_notes>")
+        sb.toString()
+    }
+
+    private fun escapeXml(str: String): String {
+        return str.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
     }
 
     suspend fun submitReport(language: String, report: ErrorReport): Boolean {
@@ -222,13 +445,16 @@ class BibleRepository(
         return BookCatalog.getBook(id, language)
     }
 
-    // --- Room Cache Specific Operations ---
+    // --- Room Cache & FTS4 Operations ---
     fun getCachedVersesCountFlow(): Flow<Int> {
         return roomDb.cachedVerseDao().getTotalCachedVersesCountFlow()
     }
 
     suspend fun clearRoomCache() = withContext(Dispatchers.IO) {
         roomDb.cachedVerseDao().clearAll()
+        try {
+            roomDb.cachedVerseDao().clearAllFts()
+        } catch (_: Exception) {}
     }
 
     suspend fun isChapterCached(translationId: String, bookId: String, chapterId: Int): Boolean = withContext(Dispatchers.IO) {
@@ -247,7 +473,6 @@ class BibleRepository(
                 CachedVerseEntity(translationId, bookId, chapterId, num, text)
             }
             roomDb.cachedVerseDao().insertVerses(entities)
-            dbHelper.saveCachedVerses(translationId, bookId, chapterId, remote)
             true
         } else {
             false

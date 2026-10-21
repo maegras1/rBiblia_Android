@@ -84,8 +84,8 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("hide_verse_numbers", value).apply()
 
     var comparisonTranslations: Set<String>
-        get() = prefs.getStringSet("comparison_translations", setOf("pl_ubg", "pl_bg", "pl_bw", "en_kjv")) ?: emptySet()
-        set(value) = prefs.edit().putStringSet("comparison_translations", value).apply()
+        get() = prefs.getStringSet("comparison_translations", setOf("pl_ubg", "pl_bg", "pl_bw", "en_kjv"))?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet("comparison_translations", HashSet(value)).apply()
 
     var comparisonLimit: Int
         get() = prefs.getInt("comparison_limit", 4)
@@ -94,4 +94,12 @@ class PreferencesManager(context: Context) {
     var diffMode: String
         get() = prefs.getString("diff_mode", "LOOSE") ?: "LOOSE"
         set(value) = prefs.edit().putString("diff_mode", value).apply()
+
+    var legacyDbMigrated: Boolean
+        get() = prefs.getBoolean("legacy_db_migrated_v5", false)
+        set(value) = prefs.edit().putBoolean("legacy_db_migrated_v5", value).apply()
+
+    var bookSelectorViewMode: String
+        get() = prefs.getString("book_selector_view_mode", "CARDS") ?: "CARDS"
+        set(value) = prefs.edit().putString("book_selector_view_mode", value).apply()
 }

@@ -13,13 +13,17 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [
         CachedVerseEntity::class,
+        CachedVerseFtsEntity::class,
         SearchHistoryEntity::class,
         VerseHighlightEntity::class,
         ReadingHistoryEntity::class,
         BookReadingProgressEntity::class,
-        ChapterReadingProgressEntity::class
+        ChapterReadingProgressEntity::class,
+        NoteEntity::class,
+        FavoriteTranslationEntity::class,
+        CachedTranslationEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class BibleDatabase : RoomDatabase() {
@@ -29,6 +33,8 @@ abstract class BibleDatabase : RoomDatabase() {
     abstract fun verseHighlightDao(): VerseHighlightDao
     abstract fun readingHistoryDao(): ReadingHistoryDao
     abstract fun readingProgressDao(): ReadingProgressDao
+    abstract fun noteDao(): NoteDao
+    abstract fun translationDao(): TranslationDao
 
     companion object {
         @Volatile
@@ -73,7 +79,6 @@ abstract class BibleDatabase : RoomDatabase() {
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Reading history table
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `reading_history` (
@@ -90,7 +95,6 @@ abstract class BibleDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_reading_history_bookId_chapter` ON `reading_history` (`bookId`, `chapter`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_reading_history_timestamp` ON `reading_history` (`timestamp`)")
 
-                // Book reading progress table
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `book_reading_progress` (
@@ -107,7 +111,6 @@ abstract class BibleDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
 
-                // Chapter reading progress table
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `chapter_reading_progress` (
@@ -127,6 +130,109 @@ abstract class BibleDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Notes table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `notes` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `translationId` TEXT,
+                        `bookId` TEXT NOT NULL,
+                        `chapterId` INTEGER NOT NULL,
+                        `verseId` INTEGER NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `isGlobal` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_bookId_chapterId` ON `notes` (`bookId`, `chapterId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_timestamp` ON `notes` (`timestamp`)")
+
+                // 2. Favorite translations table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `favorite_translations` (
+                        `translationId` TEXT NOT NULL PRIMARY KEY,
+                        `addedTimestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                // 3. Cached translations table
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `cached_translations` (
+                        `id` TEXT NOT NULL PRIMARY KEY,
+                        `language` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `updatedTimestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cached_translations_language` ON `cached_translations` (`language`)")
+
+                // 4. Full-Text Search (FTS4) virtual table for cached verses
+                db.execSQL(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS `cached_verses_fts` USING FTS4(`translationId` TEXT NOT NULL, `bookId` TEXT NOT NULL, `chapterId` INTEGER NOT NULL, `verseNumber` INTEGER NOT NULL, `text` TEXT NOT NULL)"
+                )
+
+                // Populate FTS4 index from existing cached_verses
+                db.execSQL(
+                    """
+                    INSERT INTO `cached_verses_fts`(`translationId`, `bookId`, `chapterId`, `verseNumber`, `text`)
+                    SELECT `translationId`, `bookId`, `chapterId`, `verseNumber`, `text` FROM `cached_verses`
+                    """.trimIndent()
+                )
+
+                installFtsTriggers(db)
+            }
+        }
+
+        private fun installFtsTriggers(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS `trg_cached_verses_ai`
+                AFTER INSERT ON `cached_verses`
+                BEGIN
+                    INSERT INTO `cached_verses_fts`(`translationId`, `bookId`, `chapterId`, `verseNumber`, `text`)
+                    VALUES (new.`translationId`, new.`bookId`, new.`chapterId`, new.`verseNumber`, new.`text`);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS `trg_cached_verses_ad`
+                AFTER DELETE ON `cached_verses`
+                BEGIN
+                    DELETE FROM `cached_verses_fts`
+                    WHERE `translationId` = old.`translationId`
+                      AND `bookId` = old.`bookId`
+                      AND `chapterId` = old.`chapterId`
+                      AND `verseNumber` = old.`verseNumber`;
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS `trg_cached_verses_au`
+                AFTER UPDATE ON `cached_verses`
+                BEGIN
+                    DELETE FROM `cached_verses_fts`
+                    WHERE `translationId` = old.`translationId`
+                      AND `bookId` = old.`bookId`
+                      AND `chapterId` = old.`chapterId`
+                      AND `verseNumber` = old.`verseNumber`;
+                    INSERT INTO `cached_verses_fts`(`translationId`, `bookId`, `chapterId`, `verseNumber`, `text`)
+                    VALUES (new.`translationId`, new.`bookId`, new.`chapterId`, new.`verseNumber`, new.`text`);
+                END
+                """.trimIndent()
+            )
+        }
+
         fun getInstance(context: Context): BibleDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -134,16 +240,22 @@ abstract class BibleDatabase : RoomDatabase() {
                     BibleDatabase::class.java,
                     "rbiblia_room_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            // Prepopulate default offline Polish chapters (Genesis 1 & John 1)
+                            installFtsTriggers(db)
                             CoroutineScope(Dispatchers.IO).launch {
-                                INSTANCE?.cachedVerseDao()?.let { dao ->
-                                    seedDefaultVerses(dao)
+                                INSTANCE?.let { database ->
+                                    seedDefaultFavorites(database.translationDao())
+                                    seedDefaultVerses(database.cachedVerseDao())
                                 }
                             }
+                        }
+
+                        override fun onOpen(db: SupportSQLiteDatabase) {
+                            super.onOpen(db)
+                            installFtsTriggers(db)
                         }
                     })
                     .fallbackToDestructiveMigration()
@@ -153,7 +265,25 @@ abstract class BibleDatabase : RoomDatabase() {
             }
         }
 
-        private suspend fun seedDefaultVerses(dao: CachedVerseDao) {
+        private fun seedDefaultFavorites(dao: TranslationDao) {
+            try {
+                if (dao.getFavoritesCount() == 0) {
+                    val now = System.currentTimeMillis()
+                    dao.insertFavorites(
+                        listOf(
+                            FavoriteTranslationEntity("pl_ubg", now),
+                            FavoriteTranslationEntity("pl_bt5", now),
+                            FavoriteTranslationEntity("pl_bw", now),
+                            FavoriteTranslationEntity("en_kjv", now)
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        private fun seedDefaultVerses(dao: CachedVerseDao) {
             val ubgGen1 = listOf(
                 1 to "Na początku Bóg stworzył niebo i ziemię.",
                 2 to "A ziemia była bezkształtna i pusta i ciemność była nad głębią, a Duch Boży unosił się nad wodami.",

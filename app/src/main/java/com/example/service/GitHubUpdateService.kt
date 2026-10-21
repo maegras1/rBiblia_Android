@@ -1,16 +1,20 @@
 package com.example.service
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +43,8 @@ sealed class UpdateStatus {
 
 class GitHubUpdateService(private val context: Context) {
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -51,12 +57,35 @@ class GitHubUpdateService(private val context: Context) {
         const val CHANNEL_ID = "channel_app_updates"
         const val NOTIFICATION_ID = 2001
 
+        private val TRUSTED_HOSTS = setOf(
+            "github.com",
+            "api.github.com",
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com"
+        )
+
+        fun isTrustedUpdateUrl(url: String?): Boolean {
+            if (url.isNullOrBlank()) return false
+            return runCatching {
+                val uri = Uri.parse(url.trim())
+                val scheme = uri.scheme?.lowercase()
+                val host = uri.host?.lowercase() ?: return false
+                scheme == "https" && (TRUSTED_HOSTS.contains(host) || host.endsWith(".github.com") || host.endsWith(".githubusercontent.com"))
+            }.getOrDefault(false)
+        }
+
         fun getEffectiveRepo(): String {
             val repo = BuildConfig.GITHUB_UPDATE_REPO.trim()
-            return if (repo.isNotBlank() && repo != "none" && repo != "owner/repo" && !repo.contains("example.com")) {
+            val candidate = if (repo.isNotBlank() && repo != "none" && repo != "owner/repo" && !repo.contains("example.com")) {
                 repo.removePrefix("https://github.com/")
                     .removePrefix("http://github.com/")
                     .removeSuffix("/")
+            } else {
+                "maegras1/rBiblia_Android"
+            }
+            // Validate owner/repo format
+            return if (candidate.matches(Regex("^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"))) {
+                candidate
             } else {
                 "maegras1/rBiblia_Android"
             }
@@ -69,7 +98,7 @@ class GitHubUpdateService(private val context: Context) {
 
     fun checkForUpdatesAsync(notifySystemNotification: Boolean = true, onComplete: ((UpdateStatus) -> Unit)? = null) {
         _status.value = UpdateStatus.Checking
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             val result = checkLatestRelease()
             _status.value = result
             if (result is UpdateStatus.UpdateAvailable && notifySystemNotification) {
@@ -92,52 +121,55 @@ class GitHubUpdateService(private val context: Context) {
                 .header("User-Agent", "rBiblia-Android-App")
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                if (response.code == 404) {
-                    return@withContext UpdateStatus.Error(
-                        "Brak wydań (Releases) w repozytorium $repo lub repozytorium jest prywatne (HTTP 404)."
-                    )
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 404) {
+                        return@withContext UpdateStatus.Error(
+                            "Brak wydań (Releases) w repozytorium $repo lub repozytorium jest prywatne (HTTP 404)."
+                        )
+                    }
+                    return@withContext UpdateStatus.Error("Błąd serwera GitHub: HTTP ${response.code}")
                 }
-                return@withContext UpdateStatus.Error("Błąd serwera GitHub: HTTP ${response.code}")
-            }
 
-            val body = response.body?.string() ?: return@withContext UpdateStatus.Error("Pusta odpowiedź z GitHub")
-            val json = JSONObject(body)
+                val body = response.body?.string() ?: return@withContext UpdateStatus.Error("Pusta odpowiedź z GitHub")
+                val json = JSONObject(body)
 
-            val tagName = json.optString("tag_name", "").trim()
-            val releaseName = json.optString("name", tagName)
-            val releaseNotes = json.optString("body", "")
-            val htmlUrl = json.optString("html_url", "https://github.com/$repo/releases")
+                val tagName = json.optString("tag_name", "").trim()
+                val releaseName = json.optString("name", tagName)
+                val releaseNotes = json.optString("body", "")
+                val rawHtmlUrl = json.optString("html_url", "https://github.com/$repo/releases")
+                val htmlUrl = if (isTrustedUpdateUrl(rawHtmlUrl)) rawHtmlUrl else "https://github.com/$repo/releases"
 
-            var apkUrl: String? = null
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        break
+                var apkUrl: String? = null
+                val assets = json.optJSONArray("assets")
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        val downloadUrl = asset.optString("browser_download_url")
+                        if (name.endsWith(".apk", ignoreCase = true) && isTrustedUpdateUrl(downloadUrl)) {
+                            apkUrl = downloadUrl
+                            break
+                        }
                     }
                 }
-            }
 
-            val remoteClean = tagName.removePrefix("v").removePrefix("V")
-            val currentClean = BuildConfig.VERSION_NAME.removePrefix("v").removePrefix("V")
+                val remoteClean = tagName.removePrefix("v").removePrefix("V")
+                val currentClean = BuildConfig.VERSION_NAME.removePrefix("v").removePrefix("V")
 
-            val release = ReleaseInfo(
-                tagName = tagName,
-                releaseName = releaseName,
-                releaseNotes = releaseNotes,
-                apkDownloadUrl = apkUrl,
-                releasePageUrl = htmlUrl
-            )
+                val release = ReleaseInfo(
+                    tagName = tagName,
+                    releaseName = releaseName,
+                    releaseNotes = releaseNotes,
+                    apkDownloadUrl = apkUrl,
+                    releasePageUrl = htmlUrl
+                )
 
-            if (isVersionNewer(remoteClean, currentClean)) {
-                UpdateStatus.UpdateAvailable(release)
-            } else {
-                UpdateStatus.UpToDate
+                if (isVersionNewer(remoteClean, currentClean)) {
+                    UpdateStatus.UpdateAvailable(release)
+                } else {
+                    UpdateStatus.UpToDate
+                }
             }
         } catch (e: Exception) {
             UpdateStatus.Error(e.message ?: "Błąd sprawdzania aktualizacji")
@@ -146,8 +178,8 @@ class GitHubUpdateService(private val context: Context) {
 
     fun isVersionNewer(remote: String, current: String): Boolean {
         if (remote.isBlank() || current.isBlank()) return false
-        val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
-        val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
+        val remoteParts = remote.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
+        val currentParts = current.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
 
         val maxLen = maxOf(remoteParts.size, currentParts.size)
         for (i in 0 until maxLen) {
@@ -174,7 +206,18 @@ class GitHubUpdateService(private val context: Context) {
     }
 
     fun showUpdateNotification(release: ReleaseInfo) {
-        val targetUrl = release.apkDownloadUrl ?: release.releasePageUrl
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+        }
+
+        val targetUrl = release.apkDownloadUrl?.takeIf { isTrustedUpdateUrl(it) }
+            ?: release.releasePageUrl.takeIf { isTrustedUpdateUrl(it) }
+            ?: return
+
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }

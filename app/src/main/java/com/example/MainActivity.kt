@@ -34,6 +34,7 @@ import com.example.data.remote.RBibliaApiService
 import com.example.data.repository.BibleRepository
 import com.example.service.GitHubUpdateService
 import com.example.service.UpdateStatus
+import androidx.lifecycle.ViewModelProvider
 import com.example.ui.components.AboutDialog
 import com.example.ui.components.AppUpdateDialog
 import com.example.ui.components.BibleTopAppBar
@@ -42,6 +43,7 @@ import com.example.ui.components.ChapterSelectorDialog
 import com.example.ui.components.ErrorReportDialog
 import com.example.ui.components.NoteEditorDialog
 import com.example.ui.components.NotesListDialog
+import com.example.ui.components.ReadingHistoryDialog
 import com.example.ui.components.SearchDialog
 import com.example.ui.components.SettingsDialog
 import com.example.ui.components.SideMenuDrawer
@@ -58,6 +60,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private lateinit var viewModel: BibleViewModel
+    private lateinit var updateService: GitHubUpdateService
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,12 +71,17 @@ class MainActivity : ComponentActivity() {
         val apiService = RBibliaApiService()
         val roomDb = BibleDatabase.getInstance(applicationContext)
         val repository = BibleRepository(dbHelper, prefs, apiService, roomDb)
-        val updateService = GitHubUpdateService(applicationContext)
+        updateService = GitHubUpdateService(applicationContext)
 
-        viewModel = BibleViewModel(repository, updateService)
+        viewModel = ViewModelProvider(
+            this,
+            BibleViewModel.provideFactory(repository, updateService)
+        )[BibleViewModel::class.java]
 
-        // Check for updates in background on launch
-        updateService.checkForUpdatesAsync(notifySystemNotification = true)
+        if (savedInstanceState == null) {
+            // Check for updates in background on first launch only
+            updateService.checkForUpdatesAsync(notifySystemNotification = true)
+        }
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -125,6 +133,7 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
         showSettingsDialog ||
         showAboutDialog ||
         showNotesListDialog ||
+        uiState.showReadingHistoryDialog ||
         (updateStatus is UpdateStatus.UpdateAvailable && showUpdatePromptDialog) ||
         uiState.activeVerseForActions != null ||
         uiState.compareVerseNumber != null ||
@@ -151,6 +160,8 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             showAboutDialog = false
         } else if (showNotesListDialog) {
             showNotesListDialog = false
+        } else if (uiState.showReadingHistoryDialog) {
+            viewModel.closeReadingHistory()
         } else if (updateStatus is UpdateStatus.UpdateAvailable && showUpdatePromptDialog) {
             showUpdatePromptDialog = false
         } else if (uiState.updateCheckResult != null) {
@@ -179,6 +190,7 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
                         onSelectTranslations = { showTranslationSelector = true },
                         onSelectNotes = { showNotesListDialog = true },
                         onSelectSearch = { showSearchDialog = true },
+                        onSelectReadingHistory = { viewModel.openReadingHistory() },
                         onSelectSettings = { showSettingsDialog = true },
                         onSelectAbout = { showAboutDialog = true },
                         onCloseDrawer = { scope.launch { drawerState.close() } }
@@ -235,6 +247,8 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
                 zenMode = uiState.zenMode,
                 highlightedVerse = uiState.highlightedVerse,
                 verseHighlights = uiState.verseHighlights,
+                isChapterCompleted = uiState.currentBookChaptersProgress[uiState.selectedChapter]?.isCompleted == true,
+                onToggleChapterCompleted = { viewModel.toggleChapterCompleted() },
                 onVerseClick = { verse -> viewModel.openVerseActions(verse) },
                 onNextChapter = { viewModel.nextChapter() },
                 onPrevChapter = { viewModel.prevChapter() },
@@ -251,10 +265,19 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
         BookSelectorDialog(
             currentLanguage = uiState.appLanguage,
             currentBook = uiState.selectedBook,
+            currentChapter = uiState.selectedChapter,
+            bookProgressMap = uiState.allBooksProgress,
+            currentBookChaptersProgress = uiState.currentBookChaptersProgress,
+            viewMode = uiState.bookSelectorViewMode,
+            onViewModeChange = { mode -> viewModel.setBookSelectorViewMode(mode) },
             onBookSelected = { book ->
                 showBookSelector = false
                 viewModel.selectBook(book)
                 showChapterSelector = true
+            },
+            onNavigateTo = { bookId, chapter, verse ->
+                showBookSelector = false
+                viewModel.navigateTo(bookId, chapter, verse ?: 1)
             },
             onDismiss = { showBookSelector = false }
         )
@@ -266,11 +289,26 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             book = uiState.selectedBook,
             availableChapters = uiState.availableChapters,
             currentChapter = uiState.selectedChapter,
+            chaptersProgress = uiState.currentBookChaptersProgress,
             onChapterSelected = { chapter ->
                 showChapterSelector = false
                 viewModel.selectChapter(chapter)
             },
             onDismiss = { showChapterSelector = false }
+        )
+    }
+
+    if (uiState.showReadingHistoryDialog) {
+        ReadingHistoryDialog(
+            currentLanguage = uiState.appLanguage,
+            history = uiState.readingHistory,
+            onSelectEntry = { bookId, chapter, verse ->
+                viewModel.closeReadingHistory()
+                viewModel.navigateTo(bookId, chapter, verse)
+            },
+            onDeleteEntry = { id -> viewModel.deleteReadingHistoryEntry(id) },
+            onClearHistory = { viewModel.clearReadingHistory() },
+            onDismiss = { viewModel.closeReadingHistory() }
         )
     }
 

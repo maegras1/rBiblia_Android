@@ -12,9 +12,27 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
+import java.util.Collections
 import java.util.concurrent.TimeUnit
 
 class RBibliaApiService {
+
+    private val baseUrl: String = run {
+        val raw = BuildConfig.RBIBLIA_API_BASE_URL.trim()
+        if (
+            raw.isNotBlank() &&
+            raw != "none" &&
+            !raw.contains("example.com") &&
+            raw.startsWith("https://", ignoreCase = true)
+        ) {
+            raw.removeSuffix("/")
+        } else {
+            "https://rbiblia.app/api"
+        }
+    }
+
+    private val trustedHost: String? = runCatching { URI(baseUrl).host?.lowercase() }.getOrNull()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -25,8 +43,16 @@ class RBibliaApiService {
                 .header("User-Agent", "rBiblia-Android/1.0")
                 .header("Accept", "application/json")
 
+            // Only attach API credentials if the target host matches our trusted API host
+            val requestHost = original.url.host.lowercase()
             val apiKey = BuildConfig.RBIBLIA_API_KEY
-            if (apiKey.isNotBlank() && apiKey != "none") {
+            if (
+                original.url.isHttps &&
+                trustedHost != null &&
+                requestHost == trustedHost &&
+                apiKey.isNotBlank() &&
+                apiKey != "none"
+            ) {
                 builder.header("Authorization", if (apiKey.startsWith("Bearer ", ignoreCase = true)) apiKey else "Bearer $apiKey")
                 builder.header("X-API-Key", apiKey)
             }
@@ -34,35 +60,44 @@ class RBibliaApiService {
             val requestWithHeaders = builder.build()
             var response = chain.proceed(requestWithHeaders)
             if (response.code == 429) {
-                try {
-                    Thread.sleep(800)
-                } catch (e: InterruptedException) {
-                    // Ignore
-                }
                 response.close()
+                try {
+                    Thread.sleep(600)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
                 response = chain.proceed(requestWithHeaders)
             }
             response
         }
         .build()
 
-    private val baseUrl = if (
-        BuildConfig.RBIBLIA_API_BASE_URL.isNotBlank() &&
-        BuildConfig.RBIBLIA_API_BASE_URL != "none" &&
-        !BuildConfig.RBIBLIA_API_BASE_URL.contains("example.com")
-    ) {
-        BuildConfig.RBIBLIA_API_BASE_URL.removeSuffix("/")
-    } else {
-        "https://rbiblia.app/api"
-    }
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    // Memory cache for chapters
-    private val chapterCache = mutableMapOf<String, Map<Int, String>>()
-    private val structureCache = mutableMapOf<String, Map<String, List<Int>>>()
+    // Thread-safe bounded LRU caches to prevent ConcurrentModificationException and unbounded RAM usage
+    private val chapterCache: MutableMap<String, Map<Int, String>> = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Map<Int, String>>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<Int, String>>?): Boolean {
+                return size > 80
+            }
+        }
+    )
+
+    private val structureCache: MutableMap<String, Map<String, List<Int>>> = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Map<String, List<Int>>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<String, List<Int>>>?): Boolean {
+                return size > 20
+            }
+        }
+    )
+
+    private fun sanitizeSegment(segment: String): String {
+        return segment.trim().replace(Regex("[^a-zA-Z0-9_\\-]"), "")
+    }
 
     suspend fun getTranslations(language: String): List<Translation> = withContext(Dispatchers.IO) {
-        val url = "$baseUrl/$language/translation"
+        val safeLang = sanitizeSegment(language).ifEmpty { "pl" }
+        val url = "$baseUrl/$safeLang/translation"
         val request = Request.Builder().url(url).build()
 
         try {
@@ -78,7 +113,7 @@ class RBibliaApiService {
                     list.add(
                         Translation(
                             id = obj.getString("id"),
-                            language = obj.optString("language", language),
+                            language = obj.optString("language", safeLang),
                             name = obj.getString("name"),
                             description = obj.optString("description", ""),
                             date = obj.optString("date", "")
@@ -93,7 +128,8 @@ class RBibliaApiService {
     }
 
     suspend fun getBooksFromApi(language: String): Map<String, Pair<String, String>> = withContext(Dispatchers.IO) {
-        val url = "$baseUrl/$language/book"
+        val safeLang = sanitizeSegment(language).ifEmpty { "pl" }
+        val url = "$baseUrl/$safeLang/book"
         val request = Request.Builder().url(url).build()
 
         try {
@@ -127,10 +163,14 @@ class RBibliaApiService {
         language: String,
         translationId: String
     ): Map<String, List<Int>> = withContext(Dispatchers.IO) {
-        val cacheKey = "$language:$translationId"
+        val safeLang = sanitizeSegment(language).ifEmpty { "pl" }
+        val safeTrans = sanitizeSegment(translationId)
+        if (safeTrans.isEmpty()) return@withContext emptyMap()
+
+        val cacheKey = "$safeLang:$safeTrans"
         structureCache[cacheKey]?.let { return@withContext it }
 
-        val url = "$baseUrl/$language/translation/$translationId"
+        val url = "$baseUrl/$safeLang/translation/$safeTrans"
         val request = Request.Builder().url(url).build()
 
         try {
@@ -165,10 +205,16 @@ class RBibliaApiService {
         bookId: String,
         chapterId: Int
     ): Map<Int, String> = withContext(Dispatchers.IO) {
-        val cacheKey = "$translationId:$bookId:$chapterId"
+        val safeLang = sanitizeSegment(language).ifEmpty { "pl" }
+        val safeTrans = sanitizeSegment(translationId)
+        val safeBook = sanitizeSegment(bookId)
+        val safeChapter = chapterId.coerceIn(1, 200)
+        if (safeTrans.isEmpty() || safeBook.isEmpty()) return@withContext emptyMap()
+
+        val cacheKey = "$safeTrans:$safeBook:$safeChapter"
         chapterCache[cacheKey]?.let { return@withContext it }
 
-        val url = "$baseUrl/$language/translation/$translationId/book/$bookId/chapter/$chapterId"
+        val url = "$baseUrl/$safeLang/translation/$safeTrans/book/$safeBook/chapter/$safeChapter"
         val request = Request.Builder().url(url).build()
 
         try {

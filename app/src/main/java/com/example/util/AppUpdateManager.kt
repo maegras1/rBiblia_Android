@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.example.BuildConfig
+import com.example.service.GitHubUpdateService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -60,49 +61,51 @@ object AppUpdateManager {
                 .header("User-Agent", "rBiblia-Android-App")
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                if (response.code == 404) {
-                    return@withContext UpdateCheckResult.Error("Brak publicznych wydań lub repozytorium jest prywatne (HTTP 404). Aby aktualizacje działały, repozytorium musi być publiczne lub posiadać opublikowany Release.")
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 404) {
+                        return@withContext UpdateCheckResult.Error("Brak publicznych wydań lub repozytorium jest prywatne (HTTP 404). Aby aktualizacje działały, repozytorium musi być publiczne lub posiadać opublikowany Release.")
+                    }
+                    return@withContext UpdateCheckResult.Error("Błąd serwera GitHub: HTTP ${response.code}")
                 }
-                return@withContext UpdateCheckResult.Error("Błąd serwera GitHub: HTTP ${response.code}")
-            }
 
-            val body = response.body?.string() ?: return@withContext UpdateCheckResult.Error("Pusta odpowiedź z GitHub")
-            val json = JSONObject(body)
+                val body = response.body?.string() ?: return@withContext UpdateCheckResult.Error("Pusta odpowiedź z GitHub")
+                val json = JSONObject(body)
 
-            val tagName = json.optString("tag_name", "").trim()
-            val releaseName = json.optString("name", tagName)
-            val releaseNotes = json.optString("body", "")
-            val htmlUrl = json.optString("html_url", "https://github.com/$cleanRepo/releases")
+                val tagName = json.optString("tag_name", "").trim()
+                val releaseName = json.optString("name", tagName)
+                val releaseNotes = json.optString("body", "")
+                val htmlUrl = json.optString("html_url", "https://github.com/$cleanRepo/releases")
 
-            val cleanTag = tagName.removePrefix("v").removePrefix("V")
-            val cleanCurrent = currentVersion.removePrefix("v").removePrefix("V")
+                val cleanTag = tagName.removePrefix("v").removePrefix("V")
+                val cleanCurrent = currentVersion.removePrefix("v").removePrefix("V")
 
-            // Find APK asset in release if any
-            var apkUrl: String? = null
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        break
+                // Find APK asset in release if any
+                var apkUrl: String? = null
+                val assets = json.optJSONArray("assets")
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        val downloadUrl = asset.optString("browser_download_url")
+                        if (name.endsWith(".apk", ignoreCase = true) && GitHubUpdateService.isTrustedUpdateUrl(downloadUrl)) {
+                            apkUrl = downloadUrl
+                            break
+                        }
                     }
                 }
-            }
 
-            if (isVersionNewer(cleanTag, cleanCurrent)) {
-                UpdateCheckResult.UpdateAvailable(
-                    latestVersion = tagName,
-                    releaseName = releaseName,
-                    releaseNotes = releaseNotes,
-                    apkDownloadUrl = apkUrl,
-                    releaseUrl = htmlUrl
-                )
-            } else {
-                UpdateCheckResult.UpToDate
+                if (isVersionNewer(cleanTag, cleanCurrent)) {
+                    UpdateCheckResult.UpdateAvailable(
+                        latestVersion = tagName,
+                        releaseName = releaseName,
+                        releaseNotes = releaseNotes,
+                        apkDownloadUrl = apkUrl,
+                        releaseUrl = if (GitHubUpdateService.isTrustedUpdateUrl(htmlUrl)) htmlUrl else "https://github.com/$cleanRepo/releases"
+                    )
+                } else {
+                    UpdateCheckResult.UpToDate
+                }
             }
         } catch (e: Exception) {
             UpdateCheckResult.Error(e.message ?: "Nie udało się sprawdzić aktualizacji")
@@ -111,8 +114,8 @@ object AppUpdateManager {
 
     private fun isVersionNewer(remote: String, current: String): Boolean {
         if (remote.isBlank() || current.isBlank()) return false
-        val remoteParts = remote.split(".").mapNotNull { it.toIntOrNull() }
-        val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
+        val remoteParts = remote.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
+        val currentParts = current.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
 
         val maxLen = maxOf(remoteParts.size, currentParts.size)
         for (i in 0 until maxLen) {
@@ -126,7 +129,8 @@ object AppUpdateManager {
 
     fun openUpdateUrl(context: Context, url: String) {
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            if (!GitHubUpdateService.isTrustedUpdateUrl(url)) return
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)

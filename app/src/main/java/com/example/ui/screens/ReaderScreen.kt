@@ -40,6 +40,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -108,6 +109,8 @@ fun ReaderScreen(
     zenMode: Boolean,
     highlightedVerse: Int?,
     verseHighlights: Map<Int, String> = emptyMap(),
+    isChapterCompleted: Boolean = false,
+    onToggleChapterCompleted: () -> Unit = {},
     onVerseClick: (Verse) -> Unit,
     onNextChapter: () -> Unit,
     onPrevChapter: () -> Unit,
@@ -669,6 +672,34 @@ fun ReaderScreen(
                                                 .padding(start = 4.dp, top = 4.dp)
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        item(key = "chapter_completion_footer") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                OutlinedButton(
+                                    onClick = onToggleChapterCompleted,
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier.testTag("toggle_chapter_completed_button")
+                                ) {
+                                    Text(
+                                        text = when {
+                                            isChapterCompleted && currentLanguage == "pl" -> "✓ Rozdział przeczytany"
+                                            isChapterCompleted && currentLanguage == "de" -> "✓ Kapitel gelesen"
+                                            isChapterCompleted -> "✓ Chapter completed"
+                                            currentLanguage == "pl" -> "Oznacz rozdział jako przeczytany"
+                                            currentLanguage == "de" -> "Kapitel als gelesen markieren"
+                                            else -> "Mark chapter as read"
+                                        },
+                                        fontWeight = if (isChapterCompleted) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isChapterCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }

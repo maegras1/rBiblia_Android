@@ -111,11 +111,28 @@ object BookCatalog {
 
     fun getBook(id: String, language: String = "en"): BookInfo {
         return bookMap[id]?.toBookInfo(language)
-            ?: BookInfo(id, id.uppercase(), id.uppercase(), BookGroup.OT, 1)
+            ?: BookInfo(id, id.uppercase(), id.uppercase(), BookGroup.OT, 1, resolveCategory(id, BookGroup.OT))
     }
 
     fun getBookName(id: String, language: String = "en"): String {
         return getBook(id, language).name
+    }
+
+    fun resolveCategory(id: String, group: BookGroup): BookCategory = when (id.lowercase()) {
+        "gen", "exo", "lev", "num", "deu" -> BookCategory.PENTATEUCH
+        "jos", "jdg", "rut", "1sa", "2sa", "1ki", "2ki", "1ch", "2ch", "ezr", "neh", "est" -> BookCategory.HISTORICAL
+        "job", "psa", "pro", "ecc", "sol" -> BookCategory.WISDOM
+        "isa", "jer", "lam", "eze", "dan" -> BookCategory.MAJOR_PROPHETS
+        "hos", "joe", "amo", "oba", "jon", "mic", "nah", "hab", "zep", "hag", "zec", "mal" -> BookCategory.MINOR_PROPHETS
+        "mat", "mar", "luk", "joh", "act" -> BookCategory.GOSPELS_ACTS
+        "rom", "1co", "2co", "gal", "eph", "phi", "col", "1th", "2th", "1ti", "2ti", "tit", "phm", "heb" -> BookCategory.PAULINE_EPISTLES
+        "jam", "1pe", "2pe", "1jo", "2jo", "3jo", "jud" -> BookCategory.GENERAL_EPISTLES
+        "rev" -> BookCategory.APOCALYPSE
+        else -> when (group) {
+            BookGroup.DC -> BookCategory.DEUTEROCANONICAL
+            BookGroup.NT -> BookCategory.GENERAL_EPISTLES
+            BookGroup.OT -> BookCategory.HISTORICAL
+        }
     }
 
     private data class BookData(
@@ -141,7 +158,14 @@ object BookCatalog {
                 "de" -> siglaDe
                 else -> siglaEn
             }
-            return BookInfo(id, name, sigla, group, defaultChapters)
+            return BookInfo(
+                id = id,
+                name = name,
+                sigla = sigla,
+                group = group,
+                chapterCount = defaultChapters,
+                category = resolveCategory(id, group)
+            )
         }
     }
 }

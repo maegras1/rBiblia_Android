@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.room.BookReadingProgressEntity
 import com.example.data.local.room.ChapterReadingProgressEntity
@@ -25,11 +26,20 @@ import com.example.ui.util.DiffMode
 import com.example.ui.util.Strings
 import com.example.util.AppUpdateManager
 import com.example.util.UpdateCheckResult
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.StringReader
 
 data class BibleUiState(
     val appLanguage: String = "pl",
@@ -85,7 +95,8 @@ data class BibleUiState(
     val latestReadingSession: ReadingHistoryEntity? = null,
     val allBooksProgress: Map<String, BookReadingProgressEntity> = emptyMap(),
     val currentBookChaptersProgress: Map<Int, ChapterReadingProgressEntity> = emptyMap(),
-    val showReadingHistoryDialog: Boolean = false
+    val showReadingHistoryDialog: Boolean = false,
+    val bookSelectorViewMode: String = "CARDS"
 )
 
 class BibleViewModel(
@@ -108,7 +119,8 @@ class BibleViewModel(
             parallelLayoutColumns = repository.preferences.parallelLayoutColumns,
             parallelShowDifferences = repository.preferences.parallelShowDifferences,
             diffMode = try { DiffMode.valueOf(repository.preferences.diffMode) } catch (e: Exception) { DiffMode.LOOSE },
-            comparisonLimit = repository.preferences.comparisonLimit
+            comparisonLimit = repository.preferences.comparisonLimit,
+            bookSelectorViewMode = repository.preferences.bookSelectorViewMode
         )
     )
     val uiState: StateFlow<BibleUiState> = _uiState.asStateFlow()
@@ -164,6 +176,13 @@ class BibleViewModel(
             repository.getAllBookProgressFlow().collect { list ->
                 val map = list.associateBy { it.bookId }
                 _uiState.update { it.copy(allBooksProgress = map) }
+            }
+        }
+
+        // Collect all user notes reactively from Room
+        viewModelScope.launch {
+            repository.getAllNotesFlow().collect { notes ->
+                _uiState.update { it.copy(allNotes = notes) }
             }
         }
 
@@ -290,8 +309,11 @@ class BibleViewModel(
         }
     }
 
-    private var highlightsJob: kotlinx.coroutines.Job? = null
-    private var chaptersProgressJob: kotlinx.coroutines.Job? = null
+    private var highlightsJob: Job? = null
+    private var chaptersProgressJob: Job? = null
+    private var versesLoadJob: Job? = null
+    private var parallelLoadJob: Job? = null
+    private var comparisonJob: Job? = null
 
     private fun observeVerseHighlights(bookId: String, chapter: Int) {
         highlightsJob?.cancel()
@@ -328,7 +350,8 @@ class BibleViewModel(
                 translationId = trans.id
             )
         }
-        viewModelScope.launch {
+        versesLoadJob?.cancel()
+        versesLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val versesList = repository.getVerses(
@@ -338,6 +361,8 @@ class BibleViewModel(
                     chapterId = state.selectedChapter
                 )
                 _uiState.update { it.copy(verses = versesList, isLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, toastMessage = "Błąd wczytywania wersetów: ${e.message}") }
             }
@@ -351,9 +376,9 @@ class BibleViewModel(
     fun loadParallelVerses() {
         val state = _uiState.value
         val parallelTrans = state.parallelTranslation ?: return
-        viewModelScope.launch {
+        parallelLoadJob?.cancel()
+        parallelLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(isParallelLoading = true) }
-            kotlinx.coroutines.delay(200)
             try {
                 val pVerses = repository.getVerses(
                     language = state.appLanguage,
@@ -362,6 +387,8 @@ class BibleViewModel(
                     chapterId = state.selectedChapter
                 )
                 _uiState.update { it.copy(parallelVerses = pVerses, isParallelLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isParallelLoading = false) }
             }
@@ -667,9 +694,10 @@ class BibleViewModel(
         val state = _uiState.value
         val baseTrans = state.selectedTranslation
 
-        viewModelScope.launch {
+        comparisonJob?.cancel()
+        comparisonJob = viewModelScope.launch {
             _uiState.update { it.copy(isComparingVerse = true) }
-            val map = existingMap.toMutableMap()
+            val map = java.util.concurrent.ConcurrentHashMap(existingMap)
 
             // Ensure base translation is present
             if (baseTrans != null && !map.containsKey(baseTrans.id)) {
@@ -679,29 +707,30 @@ class BibleViewModel(
                 }
             }
 
-            for (tid in targets) {
-                if (map.containsKey(tid) && map[tid] != "[NOT_FOUND]") continue
-                try {
-                    val verses = repository.getVerses(
-                        language = state.appLanguage,
-                        translationId = tid,
-                        bookId = state.selectedBook.id,
-                        chapterId = state.selectedChapter
-                    )
-                    val found = verses.find { it.number == verseNum }
-                    if (found != null && found.text.isNotBlank()) {
-                        map[tid] = found.text
-                    } else {
-                        map[tid] = "[NOT_FOUND]"
+            val missingTargets = targets.filter { !map.containsKey(it) || map[it] == "[NOT_FOUND]" }
+            val deferredList = missingTargets.map { tid ->
+                async(Dispatchers.IO) {
+                    val text = try {
+                        val verses = repository.getVerses(
+                            language = state.appLanguage,
+                            translationId = tid,
+                            bookId = state.selectedBook.id,
+                            chapterId = state.selectedChapter
+                        )
+                        val found = verses.find { it.number == verseNum }
+                        if (found != null && found.text.isNotBlank()) found.text else "[NOT_FOUND]"
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        "[NOT_FOUND]"
                     }
-                } catch (e: Exception) {
-                    map[tid] = "[NOT_FOUND]"
+                    map[tid] = text
+                    _uiState.update { curr ->
+                        curr.copy(comparedVerses = map.toMap())
+                    }
                 }
-                _uiState.update { curr ->
-                    curr.copy(comparedVerses = map.toMap())
-                }
-                kotlinx.coroutines.delay(20)
             }
+            deferredList.awaitAll()
             _uiState.update { it.copy(isComparingVerse = false) }
         }
     }
@@ -911,48 +940,139 @@ class BibleViewModel(
     }
 
     fun importNotesXml(xml: String): Int {
-        var count = 0
-        try {
-            val transRegex = Regex("""<translation\s+id="([^"]+)">([\s\S]*?)</translation>""")
-            val noteRegex = Regex("""<note\s+book="([^"]+)"\s+chapter="(\d+)"\s+verse="(\d+)">([\s\S]*?)</note>""")
-            val transMatches = transRegex.findAll(xml)
-            viewModelScope.launch {
-                for (tm in transMatches) {
-                    val transId = tm.groupValues[1]
-                    val isGlobal = transId == "_global" || transId.isBlank()
-                    val actualTransId = if (isGlobal) "" else transId
-                    val notesBlock = tm.groupValues[2]
-                    for (nm in noteRegex.findAll(notesBlock)) {
-                        val bookId = nm.groupValues[1]
-                        val chapterId = nm.groupValues[2].toIntOrNull() ?: 1
-                        val verseId = nm.groupValues[3].toIntOrNull() ?: 1
-                        val content = nm.groupValues[4]
-                            .replace("&quot;", "\"")
-                            .replace("&gt;", ">")
-                            .replace("&lt;", "<")
-                            .replace("&amp;", "&")
-                        repository.saveNote(
-                            VerseNote(
-                                bookId = bookId,
-                                chapterId = chapterId,
-                                verseId = verseId,
-                                translationId = if (isGlobal) null else actualTransId,
-                                content = content,
-                                isGlobal = isGlobal,
-                                timestamp = System.currentTimeMillis()
-                            )
-                        )
-                        count++
+        if (xml.isBlank()) return 0
+        if (xml.length > 2_000_000) {
+            _uiState.update { it.copy(toastMessage = "Plik XML jest zbyt duży (maks. 2 MB)") }
+            return 0
+        }
+
+        val parsedNotes = parseNotesXmlSafely(xml)
+        if (parsedNotes.isEmpty()) {
+            _uiState.update { it.copy(toastMessage = "Brak poprawnych notatek w pliku XML") }
+            return 0
+        }
+
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    for (note in parsedNotes) {
+                        repository.saveNote(note)
                     }
                 }
                 loadNotes()
                 loadVerses()
-                _uiState.update { it.copy(toastMessage = "Zaimportowano $count notatek") }
+                _uiState.update { it.copy(toastMessage = "Zaimportowano ${parsedNotes.size} notatek") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(toastMessage = "Błąd zapisu notatek: ${e.message}") }
             }
-        } catch (e: Exception) {
-            _uiState.update { it.copy(toastMessage = "Błąd importu XML: ${e.message}") }
         }
-        return count
+        return parsedNotes.size
+    }
+
+    private fun parseNotesXmlSafely(xml: String): List<VerseNote> {
+        val result = mutableListOf<VerseNote>()
+        val validBookIds = BookCatalog.getAllBooks("pl").map { it.id }.toSet()
+        try {
+            val factory = XmlPullParserFactory.newInstance().apply {
+                isNamespaceAware = false
+                try {
+                    setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+                } catch (_: Exception) {}
+            }
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xml))
+
+            var currentTranslationId: String? = null
+            var inLegacyNote = false
+            var legacyBook = ""
+            var legacyChapter = 1
+            var legacyVerse = 1
+            var legacyTrans = ""
+            var legacyIsGlobal = true
+            var legacyTimestamp = System.currentTimeMillis()
+            var legacyContent = ""
+            var currentTag = ""
+
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT && result.size < 2000) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        currentTag = parser.name ?: ""
+                        when (currentTag) {
+                            "translation" -> {
+                                val idAttr = parser.getAttributeValue(null, "id")?.trim().orEmpty()
+                                currentTranslationId = if (idAttr == "_global" || idAttr.isBlank()) null else idAttr
+                            }
+                            "note" -> {
+                                val bookAttr = parser.getAttributeValue(null, "book")?.trim()
+                                val chapterAttr = parser.getAttributeValue(null, "chapter")?.toIntOrNull()
+                                val verseAttr = parser.getAttributeValue(null, "verse")?.toIntOrNull()
+                                if (bookAttr != null && chapterAttr != null && verseAttr != null) {
+                                    // Format 1: <note book="gen" chapter="1" verse="1">text</note>
+                                    val content = parser.nextText().trim().take(10_000)
+                                    val cleanBook = bookAttr.lowercase()
+                                    if (content.isNotBlank() && (validBookIds.contains(cleanBook) || cleanBook.length in 2..6)) {
+                                        result.add(
+                                            VerseNote(
+                                                bookId = cleanBook,
+                                                chapterId = chapterAttr.coerceIn(1, 200),
+                                                verseId = verseAttr.coerceIn(1, 250),
+                                                translationId = currentTranslationId,
+                                                content = content,
+                                                isGlobal = currentTranslationId == null,
+                                                timestamp = System.currentTimeMillis()
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    // Format 2: <rbiblia_notes><note><book>...</book>...
+                                    inLegacyNote = true
+                                    legacyBook = ""
+                                    legacyChapter = 1
+                                    legacyVerse = 1
+                                    legacyTrans = ""
+                                    legacyIsGlobal = true
+                                    legacyTimestamp = System.currentTimeMillis()
+                                    legacyContent = ""
+                                }
+                            }
+                            "book" -> if (inLegacyNote) legacyBook = parser.nextText().trim().lowercase()
+                            "chapter" -> if (inLegacyNote) legacyChapter = parser.nextText().trim().toIntOrNull() ?: 1
+                            "verse" -> if (inLegacyNote) legacyVerse = parser.nextText().trim().toIntOrNull() ?: 1
+                            "translation_id" -> if (inLegacyNote) legacyTrans = parser.nextText().trim()
+                            "is_global" -> if (inLegacyNote) legacyIsGlobal = parser.nextText().trim().toBooleanStrictOrNull() ?: true
+                            "timestamp" -> if (inLegacyNote) legacyTimestamp = parser.nextText().trim().toLongOrNull() ?: System.currentTimeMillis()
+                            "content" -> if (inLegacyNote) legacyContent = parser.nextText().trim().take(10_000)
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        val endName = parser.name ?: ""
+                        if (endName == "translation") {
+                            currentTranslationId = null
+                        } else if (endName == "note" && inLegacyNote) {
+                            inLegacyNote = false
+                            if (legacyContent.isNotBlank() && legacyBook.isNotBlank()) {
+                                result.add(
+                                    VerseNote(
+                                        bookId = legacyBook,
+                                        chapterId = legacyChapter.coerceIn(1, 200),
+                                        verseId = legacyVerse.coerceIn(1, 250),
+                                        translationId = if (legacyIsGlobal || legacyTrans.isBlank()) null else legacyTrans,
+                                        content = legacyContent,
+                                        isGlobal = legacyIsGlobal || legacyTrans.isBlank(),
+                                        timestamp = legacyTimestamp
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                eventType = parser.next()
+            }
+        } catch (_: Exception) {
+            // Return any valid notes parsed so far
+        }
+        return result
     }
 
     fun startErrorReport(verse: Verse) {
@@ -1209,5 +1329,22 @@ class BibleViewModel(
 
     fun dismissUpdateDialog() {
         _uiState.update { it.copy(updateCheckResult = null) }
+    }
+
+    fun setBookSelectorViewMode(mode: String) {
+        repository.preferences.bookSelectorViewMode = mode
+        _uiState.update { it.copy(bookSelectorViewMode = mode) }
+    }
+
+    companion object {
+        fun provideFactory(
+            repository: BibleRepository,
+            updateService: GitHubUpdateService
+        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return BibleViewModel(repository, updateService) as T
+            }
+        }
     }
 }

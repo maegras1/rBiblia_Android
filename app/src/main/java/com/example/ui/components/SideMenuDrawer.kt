@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -45,6 +46,7 @@ fun SideMenuDrawer(
     onSelectTranslations: () -> Unit,
     onSelectNotes: () -> Unit,
     onSelectSearch: () -> Unit,
+    onSelectReadingHistory: () -> Unit = {},
     onSelectChapterComparison: () -> Unit = {},
     onSelectSettings: () -> Unit,
     onSelectAbout: () -> Unit,
@@ -120,6 +122,20 @@ fun SideMenuDrawer(
                 onClick = {
                     onCloseDrawer()
                     onToggleParallelReading()
+                }
+            )
+
+            SideMenuItem(
+                icon = Icons.Default.History,
+                title = when (currentLanguage) {
+                    "pl" -> "Historia czytania"
+                    "de" -> "Leseverlauf"
+                    else -> "Reading History"
+                },
+                testTag = "drawer_item_reading_history",
+                onClick = {
+                    onCloseDrawer()
+                    onSelectReadingHistory()
                 }
             )
 

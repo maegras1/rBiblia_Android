@@ -63,6 +63,9 @@ interface CachedVerseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertVerses(verses: List<CachedVerseEntity>): List<Long>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertFtsVerses(verses: List<CachedVerseFtsEntity>): List<Long>
+
     @Query("""
         DELETE FROM cached_verses 
         WHERE translationId = :translationId AND bookId = :bookId AND chapterId = :chapterId
@@ -75,6 +78,9 @@ interface CachedVerseDao {
 
     @Query("DELETE FROM cached_verses")
     fun clearAll(): Int
+
+    @Query("DELETE FROM cached_verses_fts")
+    fun clearAllFts(): Int
 
     @Query("SELECT COUNT(*) FROM cached_verses")
     fun getTotalCachedVersesCountFlow(): Flow<Int>
@@ -89,4 +95,31 @@ interface CachedVerseDao {
         ORDER BY timestamp DESC
     """)
     fun getCachedChaptersFlow(): Flow<List<CachedChapterInfo>>
+
+    // --- Full-Text Search (FTS4) & Fallback Local Search ---
+
+    @Query("""
+        SELECT translationId, bookId, chapterId, verseNumber, text, 0 AS timestamp
+        FROM cached_verses_fts
+        WHERE translationId = :translationId AND cached_verses_fts MATCH :ftsQuery
+        ORDER BY bookId ASC, chapterId ASC, verseNumber ASC
+        LIMIT :limit
+    """)
+    fun searchVersesFts(
+        translationId: String,
+        ftsQuery: String,
+        limit: Int = 200
+    ): List<CachedVerseEntity>
+
+    @Query("""
+        SELECT * FROM cached_verses
+        WHERE translationId = :translationId AND text LIKE '%' || :query || '%'
+        ORDER BY bookId ASC, chapterId ASC, verseNumber ASC
+        LIMIT :limit
+    """)
+    fun searchVersesLike(
+        translationId: String,
+        query: String,
+        limit: Int = 200
+    ): List<CachedVerseEntity>
 }

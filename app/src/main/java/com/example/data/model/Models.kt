@@ -9,12 +9,36 @@ data class Translation(
     val isFavorite: Boolean = false
 )
 
+enum class BookCategory(
+    val labelPl: String,
+    val labelEn: String,
+    val labelDe: String
+) {
+    PENTATEUCH("Pięcioksiąg (Tora)", "Pentateuch (Law)", "Pentateuch (Tora)"),
+    HISTORICAL("Księgi Historyczne", "Historical Books", "Geschichtsbücher"),
+    WISDOM("Księgi Mądrościowe i Poetyckie", "Wisdom & Poetry", "Lehrbücher & Poesie"),
+    MAJOR_PROPHETS("Prorocy Więksi", "Major Prophets", "Große Propheten"),
+    MINOR_PROPHETS("Prorocy Mniejsi", "Minor Prophets", "Kleine Propheten"),
+    GOSPELS_ACTS("Ewangelie i Dzieje", "Gospels & Acts", "Evangelien & Apostelgeschichte"),
+    PAULINE_EPISTLES("Listy Pawłowe", "Pauline Epistles", "Paulusbriefe"),
+    GENERAL_EPISTLES("Listy Powszechne", "General Epistles", "Katholische Briefe"),
+    APOCALYPSE("Apokalipsa (Prorocka)", "Prophecy (Revelation)", "Apokalypse (Prophetie)"),
+    DEUTEROCANONICAL("Księgi Deuterokanoniczne", "Deuterocanonical Books", "Spätschriften");
+
+    fun getLabel(lang: String): String = when (lang.lowercase()) {
+        "pl" -> labelPl
+        "de" -> labelDe
+        else -> labelEn
+    }
+}
+
 data class BookInfo(
     val id: String,
     val name: String,
     val sigla: String,
     val group: BookGroup, // OT, NT, DC
-    val chapterCount: Int = 1
+    val chapterCount: Int = 1,
+    val category: BookCategory = BookCategory.PENTATEUCH
 )
 
 enum class BookGroup(val displayNameResKey: String) {

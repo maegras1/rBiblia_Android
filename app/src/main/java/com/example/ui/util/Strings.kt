@@ -104,7 +104,19 @@ object Strings {
         "up_to_date" to "Posiadasz najnowszą wersję aplikacji",
         "download_update" to "Pobierz i zaktualizuj (APK)",
         "release_notes" to "Lista zmian",
-        "comparison_count" to "Liczba porównywanych przekładów (2-6):"
+        "comparison_count" to "Liczba porównywanych przekładów (2-6):",
+        "step_book" to "Księga",
+        "step_chapter" to "Rozdział",
+        "step_verse" to "Werset",
+        "select_verse" to "Wybierz werset",
+        "choose_verse_step" to "Wybór wersetu",
+        "read_from_start" to "Czytaj od początku rozdziału (Werset 1)",
+        "view_compact" to "5x Sigla",
+        "view_cards" to "3x Karty",
+        "view_list" to "Lista",
+        "chapters_short" to "rozdz.",
+        "back_to_books" to "Wróć do ksiąg",
+        "back_to_chapters" to "Wróć do rozdziałów"
     )
 
     private val en = mapOf(
@@ -210,7 +222,19 @@ object Strings {
         "up_to_date" to "You have the latest version",
         "download_update" to "Download & Install (APK)",
         "release_notes" to "Release Notes",
-        "comparison_count" to "Number of compared translations (2-6):"
+        "comparison_count" to "Number of compared translations (2-6):",
+        "step_book" to "Book",
+        "step_chapter" to "Chapter",
+        "step_verse" to "Verse",
+        "select_verse" to "Select Verse",
+        "choose_verse_step" to "Pick verse",
+        "read_from_start" to "Read from start of chapter (Verse 1)",
+        "view_compact" to "5x Sigla",
+        "view_cards" to "3x Cards",
+        "view_list" to "List",
+        "chapters_short" to "ch.",
+        "back_to_books" to "Back to books",
+        "back_to_chapters" to "Back to chapters"
     )
 
     private val de = mapOf(
@@ -316,7 +340,19 @@ object Strings {
         "up_to_date" to "Sie verwenden die neueste Version",
         "download_update" to "Herunterladen und aktualisieren (APK)",
         "release_notes" to "Änderungsprotokoll",
-        "comparison_count" to "Anzahl verglichener Übersetzungen (2-6):"
+        "comparison_count" to "Anzahl verglichener Übersetzungen (2-6):",
+        "step_book" to "Buch",
+        "step_chapter" to "Kapitel",
+        "step_verse" to "Vers",
+        "select_verse" to "Vers auswählen",
+        "choose_verse_step" to "Vers wählen",
+        "read_from_start" to "Ab Kapitelanfang lesen (Vers 1)",
+        "view_compact" to "5x Kürzel",
+        "view_cards" to "3x Karten",
+        "view_list" to "Liste",
+        "chapters_short" to "Kap.",
+        "back_to_books" to "Zurück zu Büchern",
+        "back_to_chapters" to "Zurück zu Kapiteln"
     )
 
     fun get(key: String, language: String): String {
