@@ -10,6 +10,7 @@
 .cxx
 *.apk
 *.aab
+/debug.keystore
 .env
 .env.*
 !.env.example

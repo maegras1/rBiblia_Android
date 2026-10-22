@@ -81,12 +81,37 @@ fun AboutDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                val diagnostics = androidx.compose.runtime.remember(context) {
+                    AppUpdateManager.getInstalledAppDiagnostics(context)
+                }
+
                 Text(
-                    text = "rBiblia v${AppUpdateManager.CURRENT_VERSION}",
+                    text = "rBiblia v${diagnostics.versionName} (code: ${diagnostics.versionCode})",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "ID: ${diagnostics.applicationId}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Podpis SHA-256: ${diagnostics.signatureSha256.take(23)}...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 

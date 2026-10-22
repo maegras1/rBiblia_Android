@@ -15,9 +15,9 @@ on:
         type: boolean
         default: true
       version_tag:
-        description: 'Tag wersji dla Release (np. v1.0.1)'
+        description: 'Tag wersji dla Release (np. v1.0.3, pozostaw puste dla auto)'
         required: false
-        default: 'v1.0.1'
+        default: ''
 
 permissions:
   contents: write
@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -42,49 +44,67 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Restore or verify signing keystore
+      - name: Restore and verify persistent signing keystore
         run: |
-          if [ ! -s debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            echo "Restoring persistent debug.keystore from debug.keystore.base64"
-            base64 -d debug.keystore.base64 > debug.keystore
+          if [ ! -f debug.keystore.base64 ]; then
+            echo "ERROR: debug.keystore.base64 is missing! Cannot sign APK with consistent certificate."
+            exit 1
           fi
+          echo "Restoring persistent debug.keystore from debug.keystore.base64 (stripping CRLF/whitespace)..."
+          tr -d ' \t\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
           if [ ! -s debug.keystore ]; then
-            echo "Generating fallback debug.keystore"
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "ERROR: Decoded debug.keystore is empty!"
+            exit 1
           fi
+          echo "Verifying debug.keystore certificate fingerprint (must match installed app):"
+          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -E "Alias|Owner|SHA256"
 
       - name: Determine Version and Code
         id: version_info
         run: |
-          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ] || [ "${{ startsWith(github.ref, 'refs/tags/V') }}" = "true" ]; then
             TAG="${{ github.ref_name }}"
-          elif [ "${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}" = "true" ]; then
+          elif [ "${{ github.event_name == 'workflow_dispatch' }}" = "true" ] && [ -n "${{ inputs.version_tag }}" ]; then
             TAG="${{ inputs.version_tag }}"
           else
-            TAG="v1.0.2"
+            LATEST_TAG=$(git tag -l "v*" --sort=-v:refname | head -n 1)
+            if [ -n "$LATEST_TAG" ]; then
+              L_CLEAN="${LATEST_TAG#v}"
+              L_MAJOR=$(echo "$L_CLEAN" | cut -d. -f1 | grep -o '^[0-9]\+' || echo 1)
+              L_MINOR=$(echo "$L_CLEAN" | cut -d. -f2 | grep -o '^[0-9]\+' || echo 0)
+              L_PATCH=$(echo "$L_CLEAN" | cut -d. -f3 | grep -o '^[0-9]\+' || echo 2)
+              NEXT_PATCH=$(( L_PATCH + 1 ))
+              TAG="v${L_MAJOR}.${L_MINOR}.${NEXT_PATCH}"
+            else
+              TAG="v1.0.3"
+            fi
           fi
+
+          # Ensure TAG starts with 'v'
           CLEAN_TAG="${TAG#v}"
           CLEAN_TAG="${CLEAN_TAG#V}"
-          
-          # Calculate strictly increasing integer versionCode
-          COMMITS=$(git rev-list --count HEAD 2>/dev/null || echo 1)
-          MAJOR=$(echo "$CLEAN_TAG" | cut -d. -f1)
-          MINOR=$(echo "$CLEAN_TAG" | cut -d. -f2)
-          PATCH=$(echo "$CLEAN_TAG" | cut -d. -f3 | grep -o '^[0-9]\+' || echo 0)
-          
+          TAG="v${CLEAN_TAG}"
+
+          # Parse SemVer components safely
+          MAJOR=$(echo "$CLEAN_TAG" | cut -d. -f1 | grep -o '^[0-9]\+' || echo 1)
+          MINOR=$(echo "$CLEAN_TAG" | cut -d. -f2 | grep -o '^[0-9]\+' || echo 0)
+          PATCH=$(echo "$CLEAN_TAG" | cut -d. -f3 | grep -o '^[0-9]\+' || echo 3)
+
           MAJOR=${MAJOR:-1}
           MINOR=${MINOR:-0}
-          PATCH=${PATCH:-2}
-          
-          CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
-          if [ "$CODE" -lt 10002 ]; then
-            CODE=$(( 10000 + COMMITS ))
-          fi
-          
+          PATCH=${PATCH:-3}
+
+          RUN_NUM=${{ github.run_number }}
+          RUN_NUM=${RUN_NUM:-1}
+
+          # Strictly increasing integer versionCode:
+          # Base SemVer (e.g. 1.0.3 -> 1000300) + GitHub Run Number so every CI build has a higher versionCode
+          CODE=$(( MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + RUN_NUM ))
+
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "clean_tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
           echo "version_code=${CODE}" >> $GITHUB_OUTPUT
-          echo "Version Name: ${CLEAN_TAG}, Version Code: ${CODE}"
+          echo "Version Name: ${CLEAN_TAG} (Tag: ${TAG}), Version Code: ${CODE} (Run #${RUN_NUM})"
 
       - name: Make gradlew executable
         run: chmod +x gradlew
@@ -95,20 +115,25 @@ jobs:
             -PcustomVersionName="${{ steps.version_info.outputs.clean_tag }}" \
             -PcustomVersionCode="${{ steps.version_info.outputs.version_code }}" \
             --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/rBiblia-v${{ steps.version_info.outputs.clean_tag }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rBiblia-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: rBiblia-v${{ steps.version_info.outputs.clean_tag }}-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/rBiblia-v${{ steps.version_info.outputs.clean_tag }}.apk
           retention-days: 30
 
       - name: Create GitHub Release
-        if: (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)) && steps.version_info.outputs.tag != ''
+        if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V') || (github.event_name == 'workflow_dispatch' && inputs.create_release)) && steps.version_info.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version_info.outputs.tag }}
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            app/build/outputs/apk/debug/rBiblia-v${{ steps.version_info.outputs.clean_tag }}.apk
+            app/build/outputs/apk/debug/app-debug.apk
           name: Release ${{ steps.version_info.outputs.tag }}
           draft: false
           prerelease: false

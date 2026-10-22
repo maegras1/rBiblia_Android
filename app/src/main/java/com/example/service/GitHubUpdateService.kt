@@ -143,14 +143,22 @@ class GitHubUpdateService(private val context: Context) {
                 var apkUrl: String? = null
                 val assets = json.optJSONArray("assets")
                 if (assets != null) {
+                    var fallbackApkUrl: String? = null
                     for (i in 0 until assets.length()) {
                         val asset = assets.getJSONObject(i)
                         val name = asset.optString("name", "")
                         val downloadUrl = asset.optString("browser_download_url")
                         if (name.endsWith(".apk", ignoreCase = true) && isTrustedUpdateUrl(downloadUrl)) {
-                            apkUrl = downloadUrl
-                            break
+                            if (name.startsWith("rBiblia", ignoreCase = true)) {
+                                apkUrl = downloadUrl
+                                break
+                            } else if (fallbackApkUrl == null) {
+                                fallbackApkUrl = downloadUrl
+                            }
                         }
+                    }
+                    if (apkUrl == null) {
+                        apkUrl = fallbackApkUrl
                     }
                 }
 
@@ -178,8 +186,12 @@ class GitHubUpdateService(private val context: Context) {
 
     fun isVersionNewer(remote: String, current: String): Boolean {
         if (remote.isBlank() || current.isBlank()) return false
-        val remoteParts = remote.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
-        val currentParts = current.split(".").mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
+        val remoteParts = remote.trim().removePrefix("v").removePrefix("V")
+            .split(".", "-", "_")
+            .mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
+        val currentParts = current.trim().removePrefix("v").removePrefix("V")
+            .split(".", "-", "_")
+            .mapNotNull { it.takeWhile { ch -> ch.isDigit() }.toIntOrNull() }
 
         val maxLen = maxOf(remoteParts.size, currentParts.size)
         for (i in 0 until maxLen) {

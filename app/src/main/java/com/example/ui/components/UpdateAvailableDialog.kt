@@ -22,14 +22,22 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +49,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.BuildConfig
 import com.example.service.ReleaseInfo
+import com.example.util.ApkCompatibilityReport
 import com.example.util.AppUpdateManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun UpdateAvailableDialog(
@@ -49,6 +59,10 @@ fun UpdateAvailableDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isVerifyingApk by remember { mutableStateOf(false) }
+    var compatibilityReport by remember { mutableStateOf<ApkCompatibilityReport?>(null) }
+    var verificationError by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -65,6 +79,7 @@ fun UpdateAvailableDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 // Header with icon and close button
                 Row(
@@ -174,7 +189,89 @@ fun UpdateAvailableDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (release.apkDownloadUrl != null) {
+                    OutlinedButton(
+                        onClick = {
+                            isVerifyingApk = true
+                            verificationError = null
+                            scope.launch {
+                                val check = AppUpdateManager.verifyRemoteApkCompatibility(
+                                    context = context,
+                                    apkDownloadUrl = release.apkDownloadUrl
+                                )
+                                isVerifyingApk = false
+                                check.onSuccess { report ->
+                                    compatibilityReport = report
+                                }.onFailure { err ->
+                                    verificationError = err.message ?: "Błąd weryfikacji pliku APK"
+                                }
+                            }
+                        },
+                        enabled = !isVerifyingApk,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("verify_apk_compatibility_button")
+                    ) {
+                        if (isVerifyingApk) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (isVerifyingApk) "Weryfikacja podpisu i ID..."
+                            else "Sprawdź zgodność aktualizacji (ID / Podpis)"
+                        )
+                    }
+                }
+
+                compatibilityReport?.let { report ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (report.isCompatibleForInPlaceUpdate)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        else
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = report.summaryMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (report.isCompatibleForInPlaceUpdate)
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "ID: ${report.apkPackage} (${if (report.packageMatches) "OK" else "KONFLIKT"})\n" +
+                                    "VersionCode: ${report.installedVersionCode} ➔ ${report.apkVersionCode} (${if (report.versionCodeValid) "OK" else "DOWNGRADE"})\n" +
+                                    "Podpis SHA-256: ${if (report.signatureMatches) "Zgodny" else "Niezgodny"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                verificationError?.let { err ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = err,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Action buttons
                 val targetDownloadUrl = release.apkDownloadUrl ?: release.releasePageUrl

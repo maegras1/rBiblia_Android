@@ -11,19 +11,21 @@ android {
 
     fun parseVersionCode(name: String): Int {
         return try {
-            val parts = name.trim().removePrefix("v").removePrefix("V").split(".")
-            val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
-            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
-            val patch = parts.getOrNull(2)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
-            val calculated = major * 10000 + minor * 100 + patch
-            if (calculated > 0) calculated else 10002
+            val cleaned = name.trim().removePrefix("v").removePrefix("V")
+            val parts = cleaned.split(".", "-")
+            val major = parts.getOrNull(0)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 1
+            val minor = parts.getOrNull(1)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
+            val patch = parts.getOrNull(2)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 3
+            val buildNum = parts.getOrNull(3)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
+            val calculated = major * 1_000_000 + minor * 10_000 + patch * 100 + (buildNum % 100)
+            if (calculated >= 1_000_000) calculated else 1_000_300
         } catch (_: Exception) {
-            10002
+            1_000_300
         }
     }
 
     val customVCode = (project.findProperty("customVersionCode") as? String)?.toIntOrNull()
-    val vName = (project.findProperty("customVersionName") as? String) ?: "1.0.2"
+    val vName = (project.findProperty("customVersionName") as? String) ?: "1.0.3"
     val vCode = customVCode ?: parseVersionCode(vName)
 
     defaultConfig {
