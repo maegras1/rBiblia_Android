@@ -45,13 +45,20 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Restore and verify persistent signing keystore
+        env:
+          SECRET_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ ! -f debug.keystore.base64 ]; then
-            echo "ERROR: debug.keystore.base64 is missing! Cannot sign APK with consistent certificate."
-            exit 1
+          if [ -s debug.keystore.base64 ]; then
+            echo "Restoring persistent debug.keystore from repository debug.keystore.base64..."
+            tr -d ' \t\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
+          elif [ -n "$SECRET_KEYSTORE_B64" ]; then
+            echo "Restoring persistent debug.keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
+            printf '%s' "$SECRET_KEYSTORE_B64" | tr -d ' \t\r\n' | base64 -d > debug.keystore
+          else
+            echo "debug.keystore.base64 was omitted by AI Studio GitHub export; restoring persistent project debug.keystore..."
+            DEFAULT_B64="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"
+            printf '%s' "$DEFAULT_B64" | tr -d ' \t\r\n' | base64 -d > debug.keystore
           fi
-          echo "Restoring persistent debug.keystore from debug.keystore.base64 (stripping CRLF/whitespace)..."
-          tr -d ' \t\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
           if [ ! -s debug.keystore ]; then
             echo "ERROR: Decoded debug.keystore is empty!"
             exit 1
