@@ -9,6 +9,7 @@ import com.example.data.local.room.CachedVerseEntity
 import com.example.data.local.room.ChapterReadingProgressEntity
 import com.example.data.local.room.FavoriteTranslationEntity
 import com.example.data.local.room.NoteEntity
+import com.example.data.local.room.PartialHighlightEntity
 import com.example.data.local.room.ReadingHistoryEntity
 import com.example.data.local.room.SearchHistoryEntity
 import com.example.data.local.room.VerseHighlightEntity
@@ -555,6 +556,103 @@ class BibleRepository(
 
     suspend fun clearAllHighlights() = withContext(Dispatchers.IO) {
         roomDb.verseHighlightDao().clearAll()
+        roomDb.verseHighlightDao().clearAllPartialHighlights()
+    }
+
+    // --- Partial (Fragment) Verse Highlights (Room Database) ---
+
+    fun getPartialHighlightsFlow(bookId: String, chapter: Int): Flow<List<PartialHighlightEntity>> {
+        return roomDb.verseHighlightDao().getPartialHighlightsForChapterFlow(bookId, chapter)
+    }
+
+    suspend fun savePartialHighlight(
+        bookId: String,
+        chapter: Int,
+        verseNumber: Int,
+        startIndex: Int,
+        endIndex: Int,
+        colorHex: String,
+        colorName: String = "yellow",
+        translationId: String? = null
+    ) = withContext(Dispatchers.IO) {
+        val safeStart = minOf(startIndex, endIndex).coerceAtLeast(0)
+        val safeEnd = maxOf(startIndex, endIndex)
+        if (safeStart >= safeEnd) return@withContext
+
+        val dao = roomDb.verseHighlightDao()
+        val existing = dao.getPartialHighlightsForVerse(bookId, chapter, verseNumber)
+        val now = System.currentTimeMillis()
+
+        // Split or remove overlapping highlights so ranges stay clean and non-overlapping
+        for (item in existing) {
+            if (item.endIndex > safeStart && item.startIndex < safeEnd) {
+                dao.deletePartialHighlightById(item.id)
+                if (item.startIndex < safeStart) {
+                    dao.insertPartialHighlight(
+                        item.copy(id = 0, endIndex = safeStart, timestamp = now)
+                    )
+                }
+                if (item.endIndex > safeEnd) {
+                    dao.insertPartialHighlight(
+                        item.copy(id = 0, startIndex = safeEnd, timestamp = now)
+                    )
+                }
+            }
+        }
+
+        dao.insertPartialHighlight(
+            PartialHighlightEntity(
+                bookId = bookId,
+                chapter = chapter,
+                verseNumber = verseNumber,
+                startIndex = safeStart,
+                endIndex = safeEnd,
+                colorHex = colorHex,
+                colorName = colorName,
+                translationId = translationId,
+                timestamp = now
+            )
+        )
+    }
+
+    suspend fun removePartialHighlightRange(
+        bookId: String,
+        chapter: Int,
+        verseNumber: Int,
+        startIndex: Int,
+        endIndex: Int
+    ) = withContext(Dispatchers.IO) {
+        val safeStart = minOf(startIndex, endIndex).coerceAtLeast(0)
+        val safeEnd = maxOf(startIndex, endIndex)
+        if (safeStart >= safeEnd) return@withContext
+
+        val dao = roomDb.verseHighlightDao()
+        val existing = dao.getPartialHighlightsForVerse(bookId, chapter, verseNumber)
+        val now = System.currentTimeMillis()
+
+        for (item in existing) {
+            if (item.endIndex > safeStart && item.startIndex < safeEnd) {
+                dao.deletePartialHighlightById(item.id)
+                if (item.startIndex < safeStart) {
+                    dao.insertPartialHighlight(
+                        item.copy(id = 0, endIndex = safeStart, timestamp = now)
+                    )
+                }
+                if (item.endIndex > safeEnd) {
+                    dao.insertPartialHighlight(
+                        item.copy(id = 0, startIndex = safeEnd, timestamp = now)
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun deletePartialHighlightById(id: Long) = withContext(Dispatchers.IO) {
+        roomDb.verseHighlightDao().deletePartialHighlightById(id)
+    }
+
+    suspend fun clearVersePartialHighlights(bookId: String, chapter: Int, verseNumber: Int) = withContext(Dispatchers.IO) {
+        roomDb.verseHighlightDao().removePartialHighlightsForVerse(bookId, chapter, verseNumber)
     }
 
     // --- Reading History (Room Database) ---

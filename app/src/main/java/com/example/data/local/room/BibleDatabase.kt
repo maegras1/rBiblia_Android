@@ -21,9 +21,10 @@ import kotlinx.coroutines.launch
         ChapterReadingProgressEntity::class,
         NoteEntity::class,
         FavoriteTranslationEntity::class,
-        CachedTranslationEntity::class
+        CachedTranslationEntity::class,
+        PartialHighlightEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class BibleDatabase : RoomDatabase() {
@@ -192,6 +193,30 @@ abstract class BibleDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `verse_partial_highlights` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `bookId` TEXT NOT NULL,
+                        `chapter` INTEGER NOT NULL,
+                        `verseNumber` INTEGER NOT NULL,
+                        `startIndex` INTEGER NOT NULL,
+                        `endIndex` INTEGER NOT NULL,
+                        `colorHex` TEXT NOT NULL,
+                        `colorName` TEXT NOT NULL,
+                        `translationId` TEXT,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_verse_partial_highlights_bookId_chapter_verseNumber` ON `verse_partial_highlights` (`bookId`, `chapter`, `verseNumber`)"
+                )
+            }
+        }
+
         private fun installFtsTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
@@ -240,7 +265,7 @@ abstract class BibleDatabase : RoomDatabase() {
                     BibleDatabase::class.java,
                     "rbiblia_room_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

@@ -76,7 +76,7 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("zen_mode", value).apply()
 
     var continuousText: Boolean
-        get() = prefs.getBoolean("continuous_text", false)
+        get() = prefs.getBoolean("continuous_text", true)
         set(value) = prefs.edit().putBoolean("continuous_text", value).apply()
 
     var hideVerseNumbers: Boolean

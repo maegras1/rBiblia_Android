@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.room.BookReadingProgressEntity
 import com.example.data.local.room.ChapterReadingProgressEntity
+import com.example.data.local.room.PartialHighlightEntity
 import com.example.data.local.room.ReadingHistoryEntity
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookInfo
@@ -61,11 +62,13 @@ data class BibleUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val darkVariant: DarkVariant = DarkVariant.GOLD,
     val zenMode: Boolean = false,
-    val continuousText: Boolean = false,
+    val continuousText: Boolean = true,
     val hideVerseNumbers: Boolean = false,
     val highlightedVerse: Int? = null,
     val verseHighlights: Map<Int, String> = emptyMap(),
+    val partialHighlights: Map<Int, List<PartialHighlightEntity>> = emptyMap(),
     val activeVerseForActions: Verse? = null,
+    val activeFragmentVerse: Verse? = null,
     val compareVerseNumber: Int? = null,
     val comparedVerses: Map<String, String> = emptyMap(),
     val comparisonTargetTranslations: List<String> = emptyList(),
@@ -310,6 +313,7 @@ class BibleViewModel(
     }
 
     private var highlightsJob: Job? = null
+    private var partialHighlightsJob: Job? = null
     private var chaptersProgressJob: Job? = null
     private var versesLoadJob: Job? = null
     private var parallelLoadJob: Job? = null
@@ -321,6 +325,13 @@ class BibleViewModel(
             repository.getVerseHighlightsFlow(bookId, chapter).collect { list ->
                 val map = list.associate { it.verseNumber to it.colorHex }
                 _uiState.update { it.copy(verseHighlights = map) }
+            }
+        }
+        partialHighlightsJob?.cancel()
+        partialHighlightsJob = viewModelScope.launch {
+            repository.getPartialHighlightsFlow(bookId, chapter).collect { list ->
+                val grouped = list.groupBy { it.verseNumber }
+                _uiState.update { it.copy(partialHighlights = grouped) }
             }
         }
     }
@@ -548,11 +559,19 @@ class BibleViewModel(
     }
 
     fun openVerseActions(verse: Verse) {
-        _uiState.update { it.copy(activeVerseForActions = verse) }
+        _uiState.update { it.copy(activeVerseForActions = verse, activeFragmentVerse = null) }
     }
 
     fun closeVerseActions() {
         _uiState.update { it.copy(activeVerseForActions = null) }
+    }
+
+    fun openFragmentHighlighter(verse: Verse) {
+        _uiState.update { it.copy(activeFragmentVerse = verse, activeVerseForActions = null) }
+    }
+
+    fun closeFragmentHighlighter() {
+        _uiState.update { it.copy(activeFragmentVerse = null) }
     }
 
     fun setVerseHighlight(verseNumber: Int, colorHex: String, colorName: String = "yellow") {
@@ -573,6 +592,62 @@ class BibleViewModel(
         val state = _uiState.value
         viewModelScope.launch {
             repository.removeVerseHighlight(
+                bookId = state.selectedBook.id,
+                chapter = state.selectedChapter,
+                verseNumber = verseNumber
+            )
+        }
+    }
+
+    fun setPartialVerseHighlight(
+        verseNumber: Int,
+        startIndex: Int,
+        endIndex: Int,
+        colorHex: String,
+        colorName: String = "yellow"
+    ) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            repository.savePartialHighlight(
+                bookId = state.selectedBook.id,
+                chapter = state.selectedChapter,
+                verseNumber = verseNumber,
+                startIndex = startIndex,
+                endIndex = endIndex,
+                colorHex = colorHex,
+                colorName = colorName,
+                translationId = state.selectedTranslation?.id
+            )
+        }
+    }
+
+    fun removePartialVerseHighlightRange(
+        verseNumber: Int,
+        startIndex: Int,
+        endIndex: Int
+    ) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            repository.removePartialHighlightRange(
+                bookId = state.selectedBook.id,
+                chapter = state.selectedChapter,
+                verseNumber = verseNumber,
+                startIndex = startIndex,
+                endIndex = endIndex
+            )
+        }
+    }
+
+    fun deletePartialHighlightById(id: Long) {
+        viewModelScope.launch {
+            repository.deletePartialHighlightById(id)
+        }
+    }
+
+    fun clearVersePartialHighlights(verseNumber: Int) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            repository.clearVersePartialHighlights(
                 bookId = state.selectedBook.id,
                 chapter = state.selectedChapter,
                 verseNumber = verseNumber

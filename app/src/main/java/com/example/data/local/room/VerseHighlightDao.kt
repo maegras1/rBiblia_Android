@@ -43,4 +43,36 @@ interface VerseHighlightDao {
 
     @Query("SELECT COUNT(*) FROM verse_highlights")
     fun getCount(): Int
+
+    // --- Partial (Fragment) Highlights ---
+
+    @Query("""
+        SELECT * FROM verse_partial_highlights 
+        WHERE bookId = :bookId AND chapter = :chapter
+        ORDER BY verseNumber ASC, startIndex ASC
+    """)
+    fun getPartialHighlightsForChapterFlow(bookId: String, chapter: Int): Flow<List<PartialHighlightEntity>>
+
+    @Query("""
+        SELECT * FROM verse_partial_highlights 
+        WHERE bookId = :bookId AND chapter = :chapter AND verseNumber = :verseNumber
+        ORDER BY startIndex ASC
+    """)
+    fun getPartialHighlightsForVerse(bookId: String, chapter: Int, verseNumber: Int): List<PartialHighlightEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertPartialHighlight(item: PartialHighlightEntity): Long
+
+    @Query("DELETE FROM verse_partial_highlights WHERE id = :id")
+    fun deletePartialHighlightById(id: Long): Int
+
+    @Query("""
+        DELETE FROM verse_partial_highlights 
+        WHERE bookId = :bookId AND chapter = :chapter AND verseNumber = :verseNumber
+    """)
+    fun removePartialHighlightsForVerse(bookId: String, chapter: Int, verseNumber: Int): Int
+
+    @Query("DELETE FROM verse_partial_highlights")
+    fun clearAllPartialHighlights(): Int
 }
+

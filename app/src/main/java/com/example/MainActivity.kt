@@ -247,6 +247,23 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
                 zenMode = uiState.zenMode,
                 highlightedVerse = uiState.highlightedVerse,
                 verseHighlights = uiState.verseHighlights,
+                partialHighlights = uiState.partialHighlights,
+                activeFragmentVerse = uiState.activeFragmentVerse,
+                onSetPartialHighlight = { verseNum, startIdx, endIdx, hex, name ->
+                    viewModel.setPartialVerseHighlight(verseNum, startIdx, endIdx, hex, name)
+                },
+                onRemovePartialHighlightRange = { verseNum, startIdx, endIdx ->
+                    viewModel.removePartialVerseHighlightRange(verseNum, startIdx, endIdx)
+                },
+                onDeletePartialHighlightById = { id ->
+                    viewModel.deletePartialHighlightById(id)
+                },
+                onClearVersePartialHighlights = { verseNum ->
+                    viewModel.clearVersePartialHighlights(verseNum)
+                },
+                onDismissFragmentHighlighter = {
+                    viewModel.closeFragmentHighlighter()
+                },
                 isChapterCompleted = uiState.currentBookChaptersProgress[uiState.selectedChapter]?.isCompleted == true,
                 onToggleChapterCompleted = { viewModel.toggleChapterCompleted() },
                 onVerseClick = { verse -> viewModel.openVerseActions(verse) },
@@ -450,8 +467,12 @@ fun BibleApp(viewModel: BibleViewModel, updateService: GitHubUpdateService) {
             chapter = uiState.selectedChapter,
             verse = verse,
             currentHighlightColorHex = uiState.verseHighlights[verse.number],
+            partialHighlights = uiState.partialHighlights[verse.number] ?: emptyList(),
             onSetHighlight = { hex, name -> viewModel.setVerseHighlight(verse.number, hex, name) },
             onRemoveHighlight = { viewModel.removeVerseHighlight(verse.number) },
+            onStartFragmentHighlight = { viewModel.openFragmentHighlighter(verse) },
+            onDeletePartialHighlight = { id -> viewModel.deletePartialHighlightById(id) },
+            onClearPartialHighlights = { viewModel.clearVersePartialHighlights(verse.number) },
             onAddNote = { viewModel.startEditingNote(verse) },
             onCompare = {
                 viewModel.closeVerseActions()
